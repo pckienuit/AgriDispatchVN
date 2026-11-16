@@ -1,0 +1,27 @@
+{
+  "name": "agridispatch-vn",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AgriDispatch VN application foundation",
+  "engines": {
+    "node": ">=26 <27",
+    "npm": ">=11 <12"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server/src/server.js",
+    "dev": "node --watch --env-file-if-exists=.env server/src/server.js",
+    "test": "node --test server/tests/*.test.js",
+    "test:integration": "node --env-file-if-exists=.env --test server/tests/integration/*.test.js",
+    "lint": "eslint .",
+    "db:migrate": "node --env-file-if-exists=.env server/scripts/migrate.js"
+  },
+  "dependencies": {
+    "express": "5.3.0",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.15.0"
+  }
+}
