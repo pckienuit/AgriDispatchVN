@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     services:
       postgres:
@@ -30,8 +30,8 @@ jobs:
     env:
       TEST_DATABASE_URL: postgresql://agridispatch:disposable_test_only@127.0.0.1:5432/agridispatch_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -40,3 +40,5 @@ jobs:
       - run: npm test
       - run: npm run test:integration
       - run: docker build -f infra/Dockerfile -t agridispatch-vn:ci .
+      - run: docker build --target test -f infra/Dockerfile -t agridispatch-vn:test .
+      - run: docker run --rm --network host -e TEST_DATABASE_URL agridispatch-vn:test
