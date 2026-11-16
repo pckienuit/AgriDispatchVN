@@ -16,7 +16,7 @@ Repo này hiện chỉ là scaffold nền: server Express 5, kết nối Postgre
 ```bash
 npm ci
 cp .env.example .env
-docker compose --env-file .env -f infra/compose.yaml up -d db
+docker compose --env-file .env -f infra/compose.yaml up -d --wait db
 npm run db:migrate
 npm run dev
 curl http://127.0.0.1:3000/health

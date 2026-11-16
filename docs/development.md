@@ -50,7 +50,7 @@ curl http://127.0.0.1:3000/ready
 ## Docker Compose (local)
 
 ```bash
-docker compose --env-file .env -f infra/compose.yaml up --build -d
+docker compose --env-file .env -f infra/compose.yaml up --build -d --wait
 docker compose --env-file .env -f infra/compose.yaml exec app npm run db:migrate
 docker compose --env-file .env -f infra/compose.yaml down
 ```
@@ -66,7 +66,7 @@ docker compose --env-file .env -f infra/compose.yaml --profile test down
 
 Profile test bind PostgreSQL ở `127.0.0.1:5434`, dùng tmpfs cho dữ liệu. Không chạy đồng thời hai bộ integration test trên cùng DB. `down` giữ volume DB ứng dụng; `down -v` xóa dữ liệu nên chỉ dùng khi cố ý reset local.
 
-Nếu chạy integration từ host: khởi động `docker compose --env-file .env -f infra/compose.yaml --profile test up -d test-db` trước, rồi `npm run test:integration`. `.env.example` khớp thông tin của DB test này.
+Nếu chạy integration từ host: khởi động `docker compose --env-file .env -f infra/compose.yaml --profile test up -d --wait test-db` trước, rồi `npm run test:integration`. `.env.example` khớp thông tin của DB test này.
 
 ## Làm việc theo task
 

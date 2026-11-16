@@ -13,9 +13,10 @@ const url = new URL(process.env.TEST_DATABASE_URL ?? 'postgresql://localhost/mis
 assert.match(decodeURIComponent(url.pathname), /_test$/, 'TEST_DATABASE_URL must identify a dedicated *_test database');
 
 test('real PostgreSQL readiness and transactional migration lifecycle', async (t) => {
-  const pool = createPool(url.href);
+  const pool = createPool(url.href, { statementTimeout: 60000 });
   t.after(() => pool.end());
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public');
+  await pool.query('SELECT pg_sleep(5.1)');
   const directory = await mkdtemp(join(tmpdir(), 'agridispatch-migrations-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   assert.deepEqual(await migrate(pool, directory), []);

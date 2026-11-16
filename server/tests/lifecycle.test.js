@@ -3,8 +3,23 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { createServer } from 'node:net';
 
 const entry = fileURLToPath(new URL('../src/server.js', import.meta.url));
+test('occupied port must not log a false listening signal', async (t) => {
+  const occupied = createServer().listen(0, '0.0.0.0');
+  await once(occupied, 'listening');
+  t.after(() => new Promise((resolve) => occupied.close(resolve)));
+  const child = spawn(process.execPath, [entry], { env: { ...process.env, PORT: String(occupied.address().port), DATABASE_URL: 'postgresql://localhost/app' } });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (data) => { stdout += data; });
+  child.stderr.on('data', (data) => { stderr += data; });
+  const [code] = await once(child, 'close');
+  assert.equal(code, 1);
+  assert.doesNotMatch(stdout, /Listening/);
+  assert.match(stderr, /EADDRINUSE/);
+});
 test('missing config fails fast without disclosing secrets', async () => {
   const child = spawn(process.execPath, [entry], { env: { ...process.env, DATABASE_URL: '' } });
   let stderr = '';

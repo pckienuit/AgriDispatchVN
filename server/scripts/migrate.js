@@ -10,31 +10,31 @@ const defaultDirectory = fileURLToPath(new URL('../../db/migrations/', import.me
 export async function migrate(pool, directory = defaultDirectory) {
   const names = (await readdir(directory)).filter((name) => name.endsWith('.sql')).sort();
   if (names.some((name) => !/^\d{3}_[a-z0-9_]+\.sql$/.test(name))) {
-    throw new Error('Migration names must match NNN_description.sql');
+    throw Object.assign(new Error('Migration names must match NNN_description.sql'), { code: 'INVALID_MIGRATION_NAME' });
   }
   if (new Set(names.map((name) => name.slice(0, 3))).size !== names.length) {
-    throw new Error('Migration numbers must be unique');
+    throw Object.assign(new Error('Migration numbers must be unique'), { code: 'DUPLICATE_MIGRATION_NUMBER' });
   }
   const files = await Promise.all(names.map(async (name) => {
     const sql = await readFile(resolve(directory, name), 'utf8');
     return { name, sql, checksum: createHash('sha256').update(sql).digest('hex') };
   }));
   const client = await pool.connect();
-  let locked = false;
+
   const applied = [];
   try {
     await client.query('SELECT pg_advisory_lock(62431875)');
-    locked = true;
+
     await client.query('CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())');
     const { rows } = await client.query('SELECT name, checksum FROM schema_migrations ORDER BY name');
     for (const row of rows) {
       const file = files.find((item) => item.name === row.name);
-      if (!file) throw new Error(`Applied migration missing: ${row.name}`);
-      if (file.checksum !== row.checksum) throw new Error(`Applied migration changed: ${row.name}`);
+      if (!file) throw Object.assign(new Error(`Applied migration missing: ${row.name}`), { code: 'MIGRATION_MISSING' });
+      if (file.checksum !== row.checksum) throw Object.assign(new Error(`Applied migration changed: ${row.name}`), { code: 'MIGRATION_CHANGED' });
     }
     for (const file of files) {
       if (rows.some((row) => row.name === file.name)) continue;
-      if (rows.some((row) => row.name > file.name)) throw new Error(`Migration inserted before applied history: ${file.name}`);
+      if (rows.some((row) => row.name > file.name)) throw Object.assign(new Error(`Migration inserted before applied history: ${file.name}`), { code: 'MIGRATION_OUT_OF_ORDER' });
       await client.query('BEGIN');
       try {
         await client.query(file.sql);
@@ -42,25 +42,25 @@ export async function migrate(pool, directory = defaultDirectory) {
         await client.query('COMMIT');
         applied.push(file.name);
       } catch (error) {
-        await client.query('ROLLBACK');
+        try {
+          await client.query('ROLLBACK');
+        } catch {
+          // Destroying the connection below rolls back even when it cannot answer.
+        }
         throw error;
       }
     }
     return applied;
   } finally {
-    try {
-      if (locked) await client.query('SELECT pg_advisory_unlock(62431875)');
-    } finally {
-      // Destroy migration connection so a failed unlock cannot retain a session lock.
-      client.release(true);
-    }
+    // Closing the dedicated session releases its advisory lock without masking errors.
+    client.release(true);
   }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   let pool;
   try {
-    pool = createPool(readConfig().databaseUrl);
+    pool = createPool(readConfig({ ...process.env, PORT: '3000' }).databaseUrl, { statementTimeout: 60000 });
     const names = await migrate(pool);
     console.log(JSON.stringify({ applied: names }));
   } catch (error) {
