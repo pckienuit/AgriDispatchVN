@@ -2,6 +2,7 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { createCatalogRouter } from './catalog.js';
 import { createAccountAuth } from './service-auth.js';
+import { createBookingRouter } from './booking.js';
 
 export function createApp({ pool, accountServiceUrl, internalServiceToken }) {
   const app = express();
@@ -24,6 +25,7 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken }) {
   if (accountServiceUrl !== undefined || internalServiceToken !== undefined) {
     const authenticate = createAccountAuth({ accountServiceUrl, internalServiceToken });
     app.use(createCatalogRouter({ pool, authenticate }));
+    app.use(createBookingRouter({ pool, authenticate }));
   }
   app.use(express.static(fileURLToPath(new URL('../../web/', import.meta.url)), { dotfiles: 'deny' }));
   app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND' } }));

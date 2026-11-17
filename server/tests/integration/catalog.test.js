@@ -82,14 +82,14 @@ test('migration 002 creates dispatch tables, indexes and no pretend identity FK'
   assert.ok(ctx.applied.includes('002_catalog.sql'));
   assert.deepEqual(await migrate(ctx.pool), []);
   const tables = (await ctx.pool.query(
-    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'dispatch' ORDER BY table_name",
+    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'dispatch' AND table_name IN ('fields', 'machines', 'services') ORDER BY table_name",
   )).rows.map((row) => row.table_name);
   assert.deepEqual(tables, ['fields', 'machines', 'services']);
   const indexes = (await ctx.pool.query("SELECT indexname FROM pg_indexes WHERE schemaname = 'dispatch' ORDER BY indexname")).rows.map((row) => row.indexname);
   for (const name of ['fields_owner_created_idx', 'machines_owner_created_idx', 'services_active_order_idx']) {
     assert.ok(indexes.includes(name), name);
   }
-  assert.equal(await count("SELECT count(*)::text AS n FROM information_schema.table_constraints WHERE table_schema = 'dispatch' AND constraint_type = 'FOREIGN KEY'"), 0);
+  assert.equal(await count("SELECT count(*)::text AS n FROM information_schema.table_constraints WHERE table_schema = 'dispatch' AND table_name IN ('fields', 'machines', 'services') AND constraint_type = 'FOREIGN KEY'"), 0);
 });
 
 test('direct SQL rejects invalid catalog and asset rows', async () => {

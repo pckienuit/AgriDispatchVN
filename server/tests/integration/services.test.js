@@ -45,7 +45,18 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   const services = await fetch(booking.url + '/api/services');
   assert.equal(services.status, 200);
   assert.equal((await services.json()).items.length, 3);
-  assert.equal((await post(booking.url, '/api/fields', { name: 'Ruộng demo', locality: 'Địa bàn mô phỏng', areaM2: 12000 }, session.token)).status, 201);
+  const fieldResponse = await post(booking.url, '/api/fields', { name: 'Ruộng demo', locality: 'Địa bàn mô phỏng', areaM2: 12000 }, session.token);
+  assert.equal(fieldResponse.status, 201);
+  const { field } = await fieldResponse.json();
+  const request = { fieldId: field.id, serviceId: '00000000-0000-4000-8000-000000000102', startAt: '2026-11-25T08:00:00Z', endAt: '2026-11-25T12:00:00Z' };
+  const createOrder = (token = session.token) => fetch(booking.url + '/api/bookings', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'Idempotency-Key': 'live-http-booking-key-0001' }, body: JSON.stringify(request),
+  });
+  const order = await createOrder();
+  assert.equal(order.status, 201);
+  const original = await order.json();
+  assert.deepEqual(await (await createOrder()).json(), original);
+  assert.equal(original.booking.totalVnd, '1440000');
   const mine = await fetch(booking.url + '/api/fields', { headers: { Authorization: `Bearer ${session.token}` } });
   assert.equal((await mine.json()).items.length, 1);
   assert.equal((await post(booking.url, '/api/machines', { name: 'Máy demo', type: 'harvester' }, session.token)).status, 403);
