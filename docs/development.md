@@ -68,6 +68,20 @@ Profile test bind PostgreSQL ở `127.0.0.1:5434`, dùng tmpfs cho dữ liệu. 
 
 Nếu chạy integration từ host: khởi động `docker compose --env-file .env -f infra/compose.yaml --profile test up -d --wait test-db` trước, rồi `npm run test:integration`. `.env.example` khớp thông tin của DB test này.
 
+## Chạy hai service trên host
+
+Sau khi chạy migration, khởi động account-service ở terminal riêng. Dùng `INTERNAL_SERVICE_TOKEN` ngẫu nhiên ít nhất 32 ký tự, truyền qua môi trường cho cả hai process; không lưu vào Git hoặc đưa lên issue.
+
+- Account: đặt `PORT=3001`, `DATABASE_URL`, `INTERNAL_SERVICE_TOKEN`, rồi chạy `node server/src/account-server.js`.
+- Booking: đặt `PORT=3000`, `DATABASE_URL`, `INTERNAL_SERVICE_TOKEN`, `ACCOUNT_SERVICE_URL=http://127.0.0.1:3001`, rồi chạy `npm start`.
+- Seed local: `SEED_CATALOG_CONFIRM=local-synthetic node server/scripts/seed-catalog.js` với `DATABASE_URL` trỏ loopback và môi trường không phải production. Script từ chối cloud/production; seed trong cloud cần bước riêng được duyệt.
+- Không truyền cấu hình account thì process booking chỉ chạy scaffold health/static, không mở route nghiệp vụ. Cấu hình thiếu một trong URL/secret sẽ bị từ chối.
+- `/api/auth/*` và `/api/me` hiện thuộc account-service; frontend same-origin gateway được ghép trong giai đoạn UI. Không bật CORS rộng để lách lỗi tích hợp.
+
+Integration account/catalog dùng DB riêng được tạo từ `TEST_DATABASE_URL`, vì vậy local/CI test login cần quyền `CREATEDB`. DB root phải là `_test` ở loopback; không trỏ DB dùng chung. Container test hiện dùng host network để truy cập DB qua loopback. Chế độ Compose test qua hostname `test-db` cần hoàn thiện trước mốc G4.
+
+Throttle demo: 5 lần đăng nhập sai/email, 30 lượt login/IP và 10 đăng ký/IP trong 900 giây. IP lấy từ socket, chưa tin proxy header; sau reverse proxy các client dùng chung bucket. Đây là giới hạn đã biết, không phải cấu hình cloud production đã nghiệm thu.
+
 ## Làm việc theo task
 
 - Tạo branch `feat/<ma-task>-<mo-ta>` hoặc `fix/<ma-task>-<mo-ta>` từ `main`; một PR tập trung một task.

@@ -2,11 +2,15 @@
 
 Nền tảng điều phối dịch vụ cơ giới hóa nông nghiệp Việt Nam, trọng tâm ĐBSCL.
 
-Repo này hiện chỉ là scaffold nền: server Express 5, kết nối PostgreSQL 17, runner migration, cấu hình container và CI.
+Nhánh cloud đang triển khai ứng dụng trên nền Express 5, PostgreSQL 17, migration, Docker và CI. Hai service nghiệp vụ dùng HTTP để kiểm danh tính.
 
 ## Trạng thái
 
-- Chưa có nghiệp vụ, xác thực hoặc dữ liệu thật.
+- Có account-service: đăng ký/đăng nhập, session lưu PostgreSQL, giới hạn thử sai và phân quyền không cho tự nâng vai trò.
+- Có danh mục dịch vụ, thửa ruộng và máy theo chủ sở hữu. Booking-service gọi account-service thật qua HTTP; API từ chối khi không xác minh được danh tính.
+- Seed danh mục có nhãn synthetic, giá chỉ dùng thử. Chưa có dữ liệu thực địa trong DB.
+- Đặt dịch vụ, điều phối, tuyển thợ và các luồng mở rộng đang triển khai, chưa coi là hoàn tất.
+- Contract và các mốc bàn giao: [docs/api.md](docs/api.md), [docs/cloud-stages.md](docs/cloud-stages.md).
 - Chưa có frontend. `web/` chưa có `index.html`; giao diện đang được thiết kế lại.
 - Chưa triển khai lên cloud. Xem [docs/cloud.md](docs/cloud.md) cho kế hoạch và các điều kiện cần.
 - Không phải bản production.
