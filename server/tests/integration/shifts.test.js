@@ -300,7 +300,7 @@ test('complete records area and note once, repeats are idempotent, and no settle
   const states = (await ctx.pool.query('SELECT state FROM dispatch.bookings WHERE id = ANY($1::uuid[])', [f.bookingIds])).rows;
   assert.ok(states.every((row) => row.state === 'ASSIGNED'));
   assert.equal((await ctx.pool.query('SELECT status FROM dispatch.packages WHERE id = $1', [f.packageId])).rows[0].status, 'CLAIMED');
-  assert.equal(await count("SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema IN ('account', 'dispatch') AND table_name ILIKE '%pay%'", []), 0);
+  assert.equal(await count('SELECT count(*)::int AS n FROM dispatch.payments WHERE booking_id = ANY($1::uuid[])', [f.bookingIds]), 0);
 });
 
 test('shift reads are limited to the assigned operator, claimed provider and package coop', async () => {
