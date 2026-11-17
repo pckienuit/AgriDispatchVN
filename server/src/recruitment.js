@@ -202,6 +202,19 @@ export function createRecruitmentRouter({ pool, authenticate }) {
     res.json({ items: rows.map(jobDto), limit, offset });
   }));
 
+  router.get('/api/jobs/mine', authenticate, requireRoles('provider'), handle(async (req, res) => {
+    const { limit, offset } = pageOf(req.query);
+    const { rows } = await pool.query(`SELECT ${JOB_COLUMNS} FROM dispatch.jobs j WHERE j.provider_id=$1 ORDER BY j.created_at DESC,j.id DESC LIMIT $2 OFFSET $3`, [req.actor.id, limit, offset]);
+    res.json({ items: rows.map(jobDto), limit, offset });
+  }));
+
+  router.get('/api/applications/mine', authenticate, requireRoles('operator'), handle(async (req, res) => {
+    const { limit, offset } = pageOf(req.query);
+    const { rows } = await pool.query(`SELECT a.id,a.job_id,a.operator_id,a.note,a.status,a.created_at,j.title,j.locality,j.start_at,j.end_at,j.status AS job_status
+      FROM dispatch.applications a JOIN dispatch.jobs j ON j.id=a.job_id WHERE a.operator_id=$1 ORDER BY a.created_at DESC,a.id DESC LIMIT $2 OFFSET $3`, [req.actor.id, limit, offset]);
+    res.json({ items: rows.map((row) => ({ ...applicationDto(row), job: { title: row.title, locality: row.locality, startAt: row.start_at.toISOString(), endAt: row.end_at.toISOString(), status: row.job_status } })), limit, offset });
+  }));
+
   router.get('/api/jobs/:id', handle(async (req, res) => {
     const job = await loadJob(pool, requireUuid(req.params.id));
     if (!job) throw new ApiError(404, 'NOT_FOUND');

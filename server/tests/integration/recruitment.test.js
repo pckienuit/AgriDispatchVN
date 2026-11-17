@@ -185,6 +185,20 @@ test('ten operators apply to a capacity-one job; applications do not consume cap
     { status: 404, body: { error: { code: 'NOT_FOUND' } } });
 });
 
+test('personal jobs and applications are scoped to the verified actor', async () => {
+  const mine = await call('/api/jobs/mine', { token: 'seam-provider-a' });
+  assert.equal(mine.status, 200);
+  assert.ok(mine.body.items.some((job) => job.id === state.jobA));
+  assert.deepEqual((await call('/api/jobs/mine', { token: 'seam-provider-b' })).body.items, []);
+  assert.equal((await call('/api/jobs/mine', { token: 'seam-operator-1' })).status, 403);
+  const applied = await call('/api/applications/mine', { token: 'seam-operator-1' });
+  assert.equal(applied.status, 200);
+  assert.deepEqual(applied.body.items.map((a) => a.id), [state.appA[1]]);
+  assert.equal(applied.body.items[0].job.title, 'Gặt lúa bằng máy (giả lập)');
+  assert.equal((await call('/api/applications/mine', { token: 'seam-provider-a' })).status, 403);
+  assert.equal((await call('/api/applications/mine?limit=101', { token: 'seam-operator-1' })).status, 400);
+});
+
 test('application reads are provider-scoped, paginated and hidden from other roles', async () => {
   const listed = await call(`/api/jobs/${state.jobA}/applications`, { token: 'seam-provider-a' });
   assert.equal(listed.status, 200);

@@ -65,6 +65,49 @@ try {
   await send('Page.navigate', { url: origin.href });
   await wait("document.querySelectorAll('.card').length===3");
   await shot('desktop-catalog');
+  if (process.argv.includes('--recruitment')) {
+    const fixture = JSON.parse(await readFile(process.env.SYNTHETIC_LOGIN_FILE, 'utf8'));
+    const login = async (role) => {
+      await route('#login', "!!document.querySelector('#login-email')");
+      await fill('#login-email', `synthetic-${role}@example.com`); await fill('#login-password', fixture.password);
+      await click('form button[type=submit]'); await wait("document.querySelector('#logout-button').hidden===false");
+    };
+    const logout = async () => { await click('#logout-button'); await wait("location.hash==='#login' && !!document.querySelector('#login-email')"); };
+    await login('provider');
+    await route('#my-jobs', "!!document.querySelector('#job-title')");
+    const jobTitle = 'Tin tuyển mô phỏng ' + randomBytes(4).toString('hex');
+    for (const [selector,value] of [['#job-title',jobTitle],['#job-locality','Địa bàn mô phỏng'],['#job-capacity','1'],['#job-startLocal','2026-12-02T08:00'],['#job-endLocal','2026-12-02T12:00']]) await fill(selector,value);
+    await click('form button[type=submit]');
+    await wait(`[...document.querySelectorAll('a[href^="#job/"]')].some(a=>a.textContent===${JSON.stringify(jobTitle)})`);
+    const jobHash = await evaluate(`[...document.querySelectorAll('a[href^="#job/"]')].find(a=>a.textContent===${JSON.stringify(jobTitle)}).getAttribute('href')`);
+    await shot('recruitment-provider-created');
+    await logout(); await login('operator');
+    await route(jobHash, "!!document.querySelector('#application-note')");
+    await fill('#application-note','Ứng tuyển mô phỏng, chưa phải nhận việc');
+    await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Ứng tuyển').click()");
+    await wait("location.hash==='#applications' && !!document.querySelector('.card')");
+    await shot('recruitment-operator-applied');
+    await logout(); await login('provider');
+    await route(jobHash, "[...document.querySelectorAll('button')].some(b=>b.textContent==='Gửi đề nghị')");
+    await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Gửi đề nghị').click()");
+    await wait("document.querySelector('main').innerText.includes('Đã gửi đề nghị')");
+    await logout(); await login('operator');
+    await route('#offers', "[...document.querySelectorAll('button')].some(b=>b.textContent==='Nhận đề nghị')");
+    await send('Emulation.setDeviceMetricsOverride', { width:390,height:844,deviceScaleFactor:1,mobile:false });
+    await shot('recruitment-mobile-offer');
+    assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'));
+    await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Nhận đề nghị').click()");
+    await wait("document.querySelector('main').innerText.includes('Đã nhận đề nghị')");
+    await shot('recruitment-mobile-accepted');
+    await logout(); await login('provider');
+    await route(jobHash, "document.querySelector('main').innerText.includes('1/1 chỗ đã nhận')");
+    await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Đóng tin tuyển').click()");
+    await wait("document.querySelector('main').innerText.includes('Đã đóng')");
+    await shot('recruitment-mobile-closed');
+    assert.deepEqual(errors, []);
+    console.log('RECRUITMENT_BROWSER_PASS: provider create/offer/close and operator apply/accept through real account gateway. Screenshots: '+output);
+    process.exitCode=0;
+  } else {
   // Real delayed fetch reproduces stale results crossing a hash navigation.
   const raced = await evaluate(`(async()=>{
     window.delayCatalog=true;
@@ -116,6 +159,7 @@ try {
   await shot('mobile-login');
   assert.deepEqual(errors, []);
   console.log('BROWSER_SMOKE_PASS: gateway registration/login/field/booking/history/logout, responsive, skip-link, navigation race. Screenshots: ' + output);
+  }
 } finally {
   socket?.close(); chrome.kill('SIGTERM');
   await sleep(200); if (chrome.exitCode === null) chrome.kill('SIGKILL');
