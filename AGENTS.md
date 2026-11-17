@@ -19,7 +19,7 @@ Chỉ báo "đạt" khi đã chạy lệnh và thấy kết quả. Không tự k
 
 ## Ranh giới
 
-- Không tạo frontend, `index.html` hay demo khi chưa có yêu cầu. Nhóm UX/UI đang thiết kế lại giao diện.
+- Nhánh `cloud/is402-2026-11-24` đã được duyệt triển khai UI/API theo `docs/api.md` và `docs/cloud-stages.md`. Giữ JavaScript thuần, không sao chép runtime demo hoặc coi giao diện cloud là bản Figma nhóm đã nghiệm thu.
 - Không chạy migration khi app khởi động. Migration là bước triển khai riêng (`npm run db:migrate`).
 - Không sửa file migration đã áp dụng; thêm file mới.
 - Không thêm dependency khi vài dòng code là đủ. Không thêm abstraction hay cấu hình chưa cần.
