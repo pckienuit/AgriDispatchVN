@@ -10,6 +10,7 @@ import { createSchedulingRouter } from './scheduling.js';
 import { createShiftRouter } from './shifts.js';
 import { createAcceptanceRouter } from './acceptance.js';
 import { createDisputeRouter } from './disputes.js';
+import { createRemedyRouter } from './remedies.js';
 
 export function createApp({ pool, accountServiceUrl, internalServiceToken }) {
   const app = express();
@@ -40,6 +41,7 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken }) {
     app.use(createShiftRouter({ pool, authenticate }));
     app.use(createAcceptanceRouter({ pool, authenticate }));
     app.use(createDisputeRouter({ pool, authenticate }));
+    app.use(createRemedyRouter({ pool, authenticate }));
   }
   app.use(express.static(fileURLToPath(new URL('../../web/', import.meta.url)), { dotfiles: 'deny' }));
   app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND' } }));

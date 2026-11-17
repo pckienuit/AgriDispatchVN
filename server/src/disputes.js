@@ -16,7 +16,7 @@ const RESTRICT_VIOLATION = '23001';
 const UNIQUE_VIOLATION = '23505';
 
 // Parent slice (G8b, acceptance writes) uses this check to refuse proposals, consents and payments while a case is OPEN.
-export const OPEN_DISPUTE_EXISTS_SQL = "SELECT 1 FROM dispatch.disputes WHERE booking_id = $1 AND status = 'OPEN' LIMIT 1";
+export const OPEN_DISPUTE_EXISTS_SQL = "SELECT 1 FROM dispatch.disputes WHERE booking_id = $1 AND status IN ('OPEN', 'CLOSED_UNRESOLVED') LIMIT 1";
 
 export async function hasOpenDispute(db, bookingId) {
   const { rowCount } = await db.query(OPEN_DISPUTE_EXISTS_SQL, [bookingId]);

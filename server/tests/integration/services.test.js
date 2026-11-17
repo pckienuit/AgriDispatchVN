@@ -127,6 +127,13 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   const frozen = await post(booking.url, `${acceptancePath}/1/consent`, {}, session.token);
   assert.equal(frozen.status, 409);
   assert.equal((await frozen.json()).error.code, 'DISPUTE_OPEN');
+  const mediator = await createRole('mediator', 'admin');
+  assert.equal((await post(booking.url, `/api/disputes/${disputeId}/mediator`, { mediatorId: mediator.id }, mediator.token)).status, 200);
+  assert.equal((await post(booking.url, `/api/disputes/${disputeId}/proposals`, { text: 'Synthetic mutually accepted remedy, no money executed' }, mediator.token)).status, 201);
+  assert.equal((await post(booking.url, `/api/disputes/${disputeId}/proposals/1/consent`, {}, session.token)).status, 200);
+  const resolution = await post(booking.url, `/api/disputes/${disputeId}/proposals/1/consent`, {}, provider.token);
+  assert.equal(resolution.status, 200);
+  assert.equal((await resolution.json()).dispute.status, 'RESOLVED');
   assert.equal((await post(booking.url, `/api/packages/${packageId}/cancel`, { reason: 'Cannot erase work' }, coopSession.token)).status, 409);
   assert.equal((await pool.query('SELECT count(*)::int n FROM dispatch.allocations WHERE package_id=$1 AND released_at IS NULL', [packageId])).rows[0].n, 2);
   assert.equal((await post(booking.url, '/api/packages', { bookingIds: [original.booking.id] }, session.token)).status, 403);
