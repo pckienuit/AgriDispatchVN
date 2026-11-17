@@ -120,6 +120,13 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   const confirmed = await post(booking.url, `/api/payments/${claim.payment.id}/confirm`, {}, provider.token);
   assert.equal(confirmed.status, 200);
   assert.equal((await confirmed.json()).summary.outstandingVnd, '0');
+  const opened = await post(booking.url, `/api/bookings/${original.booking.id}/disputes`, { reason: 'QUALITY', details: 'Synthetic quality claim' }, session.token);
+  assert.equal(opened.status, 201);
+  const disputeId = (await opened.json()).dispute.id;
+  assert.equal((await post(booking.url, `/api/disputes/${disputeId}/responses`, { text: 'Synthetic provider response' }, provider.token)).status, 201);
+  const frozen = await post(booking.url, `${acceptancePath}/1/consent`, {}, session.token);
+  assert.equal(frozen.status, 409);
+  assert.equal((await frozen.json()).error.code, 'DISPUTE_OPEN');
   assert.equal((await post(booking.url, `/api/packages/${packageId}/cancel`, { reason: 'Cannot erase work' }, coopSession.token)).status, 409);
   assert.equal((await pool.query('SELECT count(*)::int n FROM dispatch.allocations WHERE package_id=$1 AND released_at IS NULL', [packageId])).rows[0].n, 2);
   assert.equal((await post(booking.url, '/api/packages', { bookingIds: [original.booking.id] }, session.token)).status, 403);

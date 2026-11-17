@@ -1,4 +1,5 @@
 import express from 'express';
+import { hasOpenDispute } from './disputes.js';
 
 // G7b: versioned booking acceptance and payer-reported external payment acknowledgments.
 // No funds move. A payment row is a payer claim (REPORTED) until the assigned provider confirms it.
@@ -203,6 +204,7 @@ async function paymentById(client, paymentId) {
 async function proposeAcceptance(pool, actor, bookingId, input) {
   return transaction(pool, async (client) => {
     const booking = await lockProviderBooking(client, bookingId, actor.id);
+    if (await hasOpenDispute(client, bookingId)) throw fail(409, 'DISPUTE_OPEN');
     if (booking.owner_id === actor.id) throw fail(409, 'PARTY_CONFLICT');
     if (booking.state !== 'ASSIGNED') throw fail(409, 'BOOKING_UNAVAILABLE');
     const completed = await client.query(
@@ -230,6 +232,7 @@ async function proposeAcceptance(pool, actor, bookingId, input) {
 async function consentAcceptance(pool, actor, bookingId, version) {
   return transaction(pool, async (client) => {
     const parties = await lockPartyBooking(client, bookingId, actor.id);
+    if (await hasOpenDispute(client, bookingId)) throw fail(409, 'DISPUTE_OPEN');
     if (parties.provider_id === parties.owner_id) throw fail(409, 'PARTY_CONFLICT');
     const latest = await currentAcceptance(client, bookingId);
     if (!latest || version > latest.version) throw fail(404, 'NOT_FOUND');
@@ -261,6 +264,7 @@ async function reportPayment(pool, actor, bookingId, input) {
     // Payer scope and the booking row lock serialize every claim on this booking.
     const owned = await client.query('SELECT id FROM dispatch.bookings WHERE id = $1 AND owner_id = $2 FOR UPDATE', [bookingId, actor.id]);
     if (!owned.rows[0]) throw fail(404, 'NOT_FOUND');
+    if (await hasOpenDispute(client, bookingId)) throw fail(409, 'DISPUTE_OPEN');
     const latest = await currentAcceptance(client, bookingId);
     const summary = latest ? await financialSummary(client, bookingId, latest) : null;
     if (!summary) throw fail(409, 'ACCEPTANCE_NOT_AGREED');
@@ -296,6 +300,7 @@ async function confirmPayment(pool, actor, paymentId) {
     );
     const target = rows[0];
     if (!target) throw fail(404, 'NOT_FOUND');
+    if (await hasOpenDispute(client, target.booking_id)) throw fail(409, 'DISPUTE_OPEN');
     if (target.owner_id === actor.id) throw fail(409, 'PARTY_CONFLICT');
     const latest = await currentAcceptance(client, target.booking_id);
     const summary = latest ? await financialSummary(client, target.booking_id, latest) : null;

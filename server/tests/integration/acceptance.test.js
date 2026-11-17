@@ -405,6 +405,31 @@ test('acceptance and payment never move booking state or settle; snapshot total 
   assert.equal(await count("SELECT count(*)::int AS n FROM dispatch.bookings WHERE state='SETTLED'", []), 0);
 });
 
+test('an open dispute freezes only its booking proposal, consent and payment writes', async () => {
+  const f = await completedShift({ bookings: 2 });
+  const [first, second] = f.bookingIds;
+  const path = acceptancePath(first);
+  await post(path, { areaM2: 9000, totalVnd: '81000' }, PROVIDER);
+  await post(`${path}/1/consent`, {}, FARMER);
+  await post(`${path}/1/consent`, {}, PROVIDER);
+  const reported = await post(`/api/bookings/${first}/payments`, { amountVnd: '1000', reference: 'DISPUTE-REPORT' }, FARMER);
+  const paymentId = reported.body.payment.id;
+  await ctx.pool.query("INSERT INTO dispatch.disputes(booking_id,claimant_id,respondent_id,reason,status) VALUES($1,$2,$3,'PAYMENT','OPEN')", [first,FARMER,PROVIDER]);
+  const actions = [
+    [path, { areaM2: 9000, totalVnd: '81000' }, PROVIDER],
+    [`${path}/1/consent`, {}, FARMER],
+    [`/api/bookings/${first}/payments`, { amountVnd: '1000', reference: 'DISPUTE-REPORT2' }, FARMER],
+    [`/api/payments/${paymentId}/confirm`, {}, PROVIDER],
+  ];
+  for (const [url, payload, actor] of actions) {
+    const result = await post(url,payload,actor);
+    assert.equal(result.status,409);
+    assert.equal(result.body.error.code,'DISPUTE_OPEN');
+  }
+  assert.equal((await post(acceptancePath(second), { areaM2:9000,totalVnd:'81000' }, PROVIDER)).status,201);
+  assert.equal(await count("SELECT count(*)::int n FROM dispatch.payment_events WHERE payment_id=$1 AND event_type='PAYMENT_CONFIRMED'",[paymentId]),0);
+});
+
 test('acceptance and payment history is append-only at the database', async () => {
   const f = await completedShift();
   const [b0] = f.bookingIds;
