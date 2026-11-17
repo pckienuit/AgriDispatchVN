@@ -11,7 +11,7 @@ Nhánh cloud đang triển khai ứng dụng trên nền Express 5, PostgreSQL 1
 - Seed danh mục có nhãn synthetic, giá chỉ dùng thử. Chưa có dữ liệu thực địa trong DB.
 - Đặt dịch vụ, điều phối, tuyển thợ và các luồng mở rộng đang triển khai, chưa coi là hoàn tất.
 - Contract và các mốc bàn giao: [docs/api.md](docs/api.md), [docs/cloud-stages.md](docs/cloud-stages.md).
-- Chưa có frontend. `web/` chưa có `index.html`; giao diện đang được thiết kế lại.
+- Có UI cloud JavaScript thuần: đăng ký/đăng nhập, catalog, chi tiết dịch vụ, thửa ruộng, gửi/xem đơn và lịch sử. Chưa có UI điều phối hoặc tuyển thợ. Đây không phải bản Figma nhóm UX/UI đã nghiệm thu.
 - Chưa triển khai lên cloud. Xem [docs/cloud.md](docs/cloud.md) cho kế hoạch và các điều kiện cần.
 - Không phải bản production.
 

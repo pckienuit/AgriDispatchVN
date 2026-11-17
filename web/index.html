@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AgriDispatch VN</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Chuyển tới nội dung chính</a>
+  <header class="site-header">
+    <div class="wrap header-row">
+      <p class="brand"><a href="#services">AgriDispatch VN</a></p>
+      <nav class="nav" aria-label="Điều hướng chính">
+        <a href="#services">Dịch vụ</a>
+        <a href="#fields">Thửa ruộng</a>
+        <a href="#bookings">Đơn của tôi</a>
+        <a href="#login" id="auth-link">Đăng nhập</a>
+      </nav>
+      <p class="session" id="session-state">Chưa đăng nhập</p>
+      <button type="button" class="btn secondary" id="logout-button" hidden>Đăng xuất</button>
+    </div>
+  </header>
+  <div class="wrap">
+    <p class="sr-status" id="status" role="status" aria-live="polite"></p>
+    <main id="main" tabindex="-1"></main>
+  </div>
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>Bản thử nghiệm. Mỗi dịch vụ có nhãn dữ liệu rõ ràng. Giao diện chỉ hiển thị dữ liệu từ máy chủ; khi API lỗi, trang báo lỗi và không hiện kết quả giả.</p>
+    </div>
+  </footer>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
