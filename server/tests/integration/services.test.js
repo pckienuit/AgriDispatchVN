@@ -100,8 +100,15 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   const machine = await post(booking.url, '/api/machines', { name: 'Synthetic harvester', type: 'harvester' }, provider.token);
   const machineId = (await machine.json()).machine.id;
   assert.equal((await post(booking.url, `/api/packages/${packageId}/claim`, { machineId, operatorId: operator.id }, provider.token)).status, 200);
-  assert.equal((await post(booking.url, `/api/packages/${packageId}/cancel`, { reason: 'Synthetic test cancellation' }, coopSession.token)).status, 200);
-  assert.equal((await pool.query('SELECT count(*)::int n FROM dispatch.allocations WHERE package_id=$1 AND released_at IS NULL', [packageId])).rows[0].n, 0);
+  assert.equal((await post(booking.url, `/api/bookings/${original.booking.id}/readiness`, { drained: true, mature: true, intakeReady: true }, session.token)).status, 200);
+  const started = await post(booking.url, `/api/packages/${packageId}/shifts/start`, {}, operator.token);
+  assert.equal(started.status, 201);
+  const shiftId = (await started.json()).shift.id;
+  assert.equal((await post(booking.url, `/api/shifts/${shiftId}/pause`, { reason: 'Synthetic rain' }, operator.token)).status, 200);
+  assert.equal((await post(booking.url, `/api/shifts/${shiftId}/resume`, {}, operator.token)).status, 200);
+  assert.equal((await post(booking.url, `/api/shifts/${shiftId}/complete`, { areaM2: 12000 }, operator.token)).status, 200);
+  assert.equal((await post(booking.url, `/api/packages/${packageId}/cancel`, { reason: 'Cannot erase work' }, coopSession.token)).status, 409);
+  assert.equal((await pool.query('SELECT count(*)::int n FROM dispatch.allocations WHERE package_id=$1 AND released_at IS NULL', [packageId])).rows[0].n, 2);
   assert.equal((await post(booking.url, '/api/packages', { bookingIds: [original.booking.id] }, session.token)).status, 403);
   await new Promise((resolve) => { account.server.close(resolve); account.server.closeAllConnections(); });
   const failed = await post(booking.url, '/api/fields', { name: 'Không lưu', locality: 'Demo', areaM2: 1000 }, session.token);

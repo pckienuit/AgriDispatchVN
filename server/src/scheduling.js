@@ -98,6 +98,8 @@ export function createSchedulingRouter({ pool, authenticate }) {
     if (!pkg) throw fail(404, 'NOT_FOUND');
     if (pkg.status === 'CANCELLED') return pkg;
     if (!['OPEN', 'CLAIMED'].includes(pkg.status)) throw fail(409, 'PACKAGE_UNAVAILABLE');
+    const started = await client.query('SELECT 1 FROM dispatch.shifts WHERE package_id=$1 LIMIT 1', [packageId]);
+    if (started.rowCount) throw fail(409, 'SHIFT_ACTIVE');
     if (pkg.machine_id) await lockResources(client, [`machine:${pkg.machine_id}`, `operator:${pkg.operator_id}`]);
     await client.query('UPDATE dispatch.allocations SET released_at=now() WHERE package_id=$1 AND released_at IS NULL', [packageId]);
     const updated = await client.query("UPDATE dispatch.packages SET status='CANCELLED',cancellation_reason=$2 WHERE id=$1 RETURNING *", [packageId, input.reason.trim()]);
