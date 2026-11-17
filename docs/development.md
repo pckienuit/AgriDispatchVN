@@ -76,9 +76,9 @@ Sau khi chạy migration, khởi động account-service ở terminal riêng. D�
 - Booking: đặt `PORT=3000`, `DATABASE_URL`, `INTERNAL_SERVICE_TOKEN`, `ACCOUNT_SERVICE_URL=http://127.0.0.1:3001`, rồi chạy `npm start`.
 - Seed local: `SEED_CATALOG_CONFIRM=local-synthetic node server/scripts/seed-catalog.js` với `DATABASE_URL` trỏ loopback và môi trường không phải production. Script từ chối cloud/production; seed trong cloud cần bước riêng được duyệt.
 - Không truyền cấu hình account thì process booking chỉ chạy scaffold health/static, không mở route nghiệp vụ. Cấu hình thiếu một trong URL/secret sẽ bị từ chối.
-- `/api/auth/*` và `/api/me` hiện thuộc account-service; frontend same-origin gateway được ghép trong giai đoạn UI. Không bật CORS rộng để lách lỗi tích hợp.
+- `/api/auth/*` và `/api/me` được gateway allowlist trên booking-service chuyển tới account-service. Browser dùng URL tương đối cùng origin; không bật CORS rộng. Gateway không chuyển cookie hoặc credential nội bộ do client gửi.
 
-Integration account/catalog dùng DB riêng được tạo từ `TEST_DATABASE_URL`, vì vậy local/CI test login cần quyền `CREATEDB`. DB root phải là `_test` ở loopback; không trỏ DB dùng chung. Container test hiện dùng host network để truy cập DB qua loopback. Chế độ Compose test qua hostname `test-db` cần hoàn thiện trước mốc G4.
+Integration account/catalog dùng DB riêng được tạo từ `TEST_DATABASE_URL`, vì vậy local/CI test login cần quyền `CREATEDB`. DB root phải là `_test` ở loopback hoặc hostname Compose `test-db`; không trỏ DB dùng chung. Cả Docker host-network và Compose test profile đã chạy được. Compose app/account/DB cũng đã kiểm restart giữ session và thửa ruộng; migration là bước riêng.
 
 Throttle demo: 5 lần đăng nhập sai/email, 30 lượt login/IP và 10 đăng ký/IP trong 900 giây. IP lấy từ socket, chưa tin proxy header; sau reverse proxy các client dùng chung bucket. Đây là giới hạn đã biết, không phải cấu hình cloud production đã nghiệm thu.
 
