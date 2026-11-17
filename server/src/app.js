@@ -1,7 +1,9 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
+import { createCatalogRouter } from './catalog.js';
+import { createAccountAuth } from './service-auth.js';
 
-export function createApp({ pool }) {
+export function createApp({ pool, accountServiceUrl, internalServiceToken }) {
   const app = express();
   app.disable('x-powered-by');
   app.use((req, res, next) => {
@@ -19,6 +21,10 @@ export function createApp({ pool }) {
       res.status(503).json({ status: 'unavailable' });
     }
   });
+  if (accountServiceUrl !== undefined || internalServiceToken !== undefined) {
+    const authenticate = createAccountAuth({ accountServiceUrl, internalServiceToken });
+    app.use(createCatalogRouter({ pool, authenticate }));
+  }
   app.use(express.static(fileURLToPath(new URL('../../web/', import.meta.url)), { dotfiles: 'deny' }));
   app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND' } }));
   app.use((error, req, res, next) => {
