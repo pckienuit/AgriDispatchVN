@@ -176,8 +176,9 @@ test('expired sessions are rejected and stored as digests only', async (t) => {
 
 test('accounts and live sessions persist across app restart on the same database', async (t) => {
   const db = await createDisposableDatabase(ROOT);
-  t.after(() => db.drop());
   const first = createPool(db.url, { statementTimeout: 60000 });
+  let second;
+  t.after(async () => { if (!first.ended) await first.end(); if (second && !second.ended) await second.end(); await db.drop(); });
   await migrate(first);
   const firstListener = createAccountApp({ pool: first, internalServiceToken: SERVICE_TOKEN }).listen(0, '127.0.0.1');
   await once(firstListener, 'listening');
@@ -187,8 +188,7 @@ test('accounts and live sessions persist across app restart on the same database
   await new Promise((resolve) => firstListener.close(resolve));
   await first.end();
 
-  const second = createPool(db.url, { statementTimeout: 60000 });
-  t.after(() => second.end());
+  second = createPool(db.url, { statementTimeout: 60000 });
   const listener = createAccountApp({ pool: second, internalServiceToken: SERVICE_TOKEN }).listen(0, '127.0.0.1');
   await once(listener, 'listening');
   t.after(() => new Promise((resolve) => listener.close(resolve)));
