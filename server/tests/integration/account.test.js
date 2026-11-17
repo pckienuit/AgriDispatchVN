@@ -50,6 +50,7 @@ test('disposable DB helper rejects unsafe roots and non-disposable drops', () =>
     assert.throws(() => parseDisposableRoot(url), /TEST_DATABASE_URL/, url);
   }
   assert.equal(parseDisposableRoot('postgresql://u:p@localhost:55432/agridispatch_test').hostname, 'localhost');
+  assert.equal(parseDisposableRoot('postgresql://u:p@test-db:5432/agridispatch_test').hostname, 'test-db');
 });
 
 test('register, login, me, logout and revocation through real HTTP and PostgreSQL', async (t) => {

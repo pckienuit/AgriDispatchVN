@@ -3,7 +3,7 @@ import pg from 'pg';
 
 // Disposable PostgreSQL databases for integration tests. Only loopback *_test roots are accepted, and only
 // databases this module created (name pattern below) can be dropped. Never point this at shared or cloud data.
-const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
+const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]', 'test-db']);
 const ROOT_NAME = /^[a-z0-9_]+_test$/;
 const DISPOSABLE_NAME = /^agridispatch_acct_[0-9a-f]{12}_test$/;
 

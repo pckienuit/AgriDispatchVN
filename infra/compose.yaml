@@ -15,6 +15,19 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+  account:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    command: ["node", "server/src/account-server.js"]
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-agridispatch}:${POSTGRES_PASSWORD:?Set local POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-agridispatch}"
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Set a random internal service token of at least 32 characters}
+    depends_on:
+      db:
+        condition: service_healthy
   app:
     build:
       context: ..
@@ -22,6 +35,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      ACCOUNT_SERVICE_URL: http://account:3001
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Set a random internal service token of at least 32 characters}
       DATABASE_URL: "postgresql://${POSTGRES_USER:-agridispatch}:${POSTGRES_PASSWORD:?Set local POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-agridispatch}"
     ports:
       - "127.0.0.1:${APP_PORT:-3000}:3000"

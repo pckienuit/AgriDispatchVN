@@ -59,6 +59,10 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   assert.equal(original.booking.totalVnd, '1440000');
   const mine = await fetch(booking.url + '/api/fields', { headers: { Authorization: `Bearer ${session.token}` } });
   assert.equal((await mine.json()).items.length, 1);
+  const gatewayLogin = await post(booking.url, '/api/auth/login', { email: input.email, password: input.password });
+  assert.equal(gatewayLogin.status, 200);
+  const gatewaySession = await gatewayLogin.json();
+  assert.equal((await fetch(booking.url + '/api/me', { headers: { Authorization: `Bearer ${gatewaySession.token}` } })).status, 200);
   assert.equal((await post(booking.url, '/api/machines', { name: 'Máy demo', type: 'harvester' }, session.token)).status, 403);
   const other = { ...input, email: 'other-integration@example.com' };
   assert.equal((await post(account.url, '/api/auth/register', other)).status, 201);
