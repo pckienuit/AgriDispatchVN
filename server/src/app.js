@@ -6,6 +6,7 @@ import { createBookingRouter } from './booking.js';
 import { createAccountGateway } from './account-gateway.js';
 import { createRecruitmentRouter } from './recruitment.js';
 import { createDispatchRouter } from './dispatch.js';
+import { createSchedulingRouter } from './scheduling.js';
 
 export function createApp({ pool, accountServiceUrl, internalServiceToken }) {
   const app = express();
@@ -32,6 +33,7 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken }) {
     app.use(createBookingRouter({ pool, authenticate }));
     app.use(createRecruitmentRouter({ pool, authenticate }));
     app.use(createDispatchRouter({ pool, authenticate }));
+    app.use(createSchedulingRouter({ pool, authenticate }));
   }
   app.use(express.static(fileURLToPath(new URL('../../web/', import.meta.url)), { dotfiles: 'deny' }));
   app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND' } }));

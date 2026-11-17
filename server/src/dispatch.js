@@ -250,9 +250,9 @@ export function createDispatchRouter({ pool, authenticate }) {
         [req.actor.id, limit, offset],
       )
       : await pool.query(
-        `SELECT ${columns} FROM dispatch.packages p WHERE p.status = 'OPEN'
+        `SELECT ${columns} FROM dispatch.packages p WHERE p.status = 'OPEN' OR p.provider_id = $3
           ORDER BY p.created_at DESC, p.id DESC LIMIT $1 OFFSET $2`,
-        [limit, offset],
+        [limit, offset, req.actor.id],
       );
     res.json({ items: rows.map((row) => packageDto(row, row.booking_count)), limit, offset });
   }));
@@ -269,8 +269,8 @@ export function createDispatchRouter({ pool, authenticate }) {
       )
       : await pool.query(
         `SELECT id, status, service_id, locality, window_start_at, window_end_at, created_at
-           FROM dispatch.packages WHERE id = $1 AND status = 'OPEN'`,
-        [id],
+           FROM dispatch.packages WHERE id = $1 AND (status = 'OPEN' OR provider_id = $2)`,
+        [id, req.actor.id],
       );
     if (!rows[0]) throw new ApiError(404, 'NOT_FOUND');
     const members = await pool.query(
