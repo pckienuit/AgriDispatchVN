@@ -69,6 +69,16 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   const second = await (await post(account.url, '/api/auth/login', { email: other.email, password: other.password })).json();
   const theirs = await fetch(booking.url + '/api/fields', { headers: { Authorization: `Bearer ${second.token}` } });
   assert.deepEqual((await theirs.json()).items, []);
+  const coopAccount = await post(booking.url, '/api/auth/register', { email: 'synthetic-coop@example.com', password: input.password, name: 'HTX mô phỏng' });
+  assert.equal(coopAccount.status, 201);
+  const coopId = (await coopAccount.json()).user.id;
+  await pool.query("INSERT INTO account.user_roles(user_id,role) VALUES($1,'coop')", [coopId]);
+  const coopSession = await (await post(booking.url, '/api/auth/login', { email: 'synthetic-coop@example.com', password: input.password })).json();
+  assert.equal((await post(booking.url, `/api/bookings/${original.booking.id}/coordinator`, { coordinatorId: coopId }, session.token)).status, 200);
+  const grouped = await post(booking.url, '/api/packages', { bookingIds: [original.booking.id] }, coopSession.token);
+  assert.equal(grouped.status, 201);
+  assert.equal((await grouped.json()).package.status, 'OPEN');
+  assert.equal((await post(booking.url, '/api/packages', { bookingIds: [original.booking.id] }, session.token)).status, 403);
   await new Promise((resolve) => { account.server.close(resolve); account.server.closeAllConnections(); });
   const failed = await post(booking.url, '/api/fields', { name: 'Không lưu', locality: 'Demo', areaM2: 1000 }, session.token);
   assert.equal(failed.status, 503);
