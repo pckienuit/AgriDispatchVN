@@ -16,6 +16,7 @@ export function parseDisposableRoot(rootUrl) {
   }
   if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error('TEST_DATABASE_URL must be a PostgreSQL URL');
   if (!LOOPBACK.has(url.hostname)) throw new Error('TEST_DATABASE_URL must point to a loopback PostgreSQL instance');
+  if (url.search || url.hash) throw new Error('TEST_DATABASE_URL must not contain query parameters or fragments');
   if (!ROOT_NAME.test(decodeURIComponent(url.pathname.slice(1)))) {
     throw new Error('TEST_DATABASE_URL must identify a dedicated *_test database');
   }

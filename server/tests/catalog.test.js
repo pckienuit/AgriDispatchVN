@@ -178,6 +178,7 @@ test('unexpected DB errors are not reported as outages', async (t) => {
 test('seed gate refuses production, non-local hosts and unconfirmed runs', () => {
   const local = { DATABASE_URL: 'postgresql://app:pw@127.0.0.1:5432/agridispatch', SEED_CATALOG_CONFIRM: 'local-synthetic' };
   assert.equal(assertSeedAllowed(local), '127.0.0.1');
+  assert.throws(() => assertSeedAllowed({ ...local, DATABASE_URL: local.DATABASE_URL + '?host=db.example.net' }), { code: 'SEED_REFUSED' });
   assert.throws(() => assertSeedAllowed({ ...local, NODE_ENV: 'production' }), { code: 'SEED_REFUSED' });
   assert.throws(() => assertSeedAllowed({ ...local, DATABASE_URL: 'postgresql://app:pw@db.example.net:5432/agridispatch' }), { code: 'SEED_REFUSED' });
   assert.throws(() => assertSeedAllowed({ ...local, DATABASE_URL: 'not a url' }), { code: 'SEED_REFUSED' });
@@ -197,6 +198,8 @@ test('disposable database root must be a PostgreSQL URL naming a *_test database
     'postgresql://app:pw@127.0.0.1:55432/a/b_test',
     'postgresql://app:pw@127.0.0.1:55432/x%22_test',
     'postgresql:///agridispatch_test',
+    'postgresql://app:p@127.0.0.1:55432/agridispatch_test?host=db.example.net',
+    'postgresql://app:p@127.0.0.1:55432/agridispatch_test?dbname=production',
     'postgresql://app:pw@db.example.net:5432/agridispatch_test',
     'postgresql://app:pw@10.0.0.5:5432/agridispatch_test',
   ]) {

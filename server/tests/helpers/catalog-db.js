@@ -20,7 +20,7 @@ export function parseRootDatabaseUrl(value) {
     throw new Error(message);
   }
   const hostOk = LOCAL_HOSTS.has(url.hostname) || SERVICE_HOST_PATTERN.test(url.hostname);
-  if (!['postgres:', 'postgresql:'].includes(url.protocol) || !hostOk || !DB_NAME_PATTERN.test(database)) {
+  if (!['postgres:', 'postgresql:'].includes(url.protocol) || !hostOk || !DB_NAME_PATTERN.test(database) || url.search || url.hash) {
     throw new Error(message);
   }
   return { url, database };

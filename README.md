@@ -32,6 +32,7 @@ Chạy `curl` từ terminal thứ hai. `/` trả 404 vì chưa có frontend. Chi
 
 - [Kiến trúc](docs/architecture.md)
 - [Phát triển](docs/development.md)
+- [Sinh dữ liệu synthetic local](docs/synthetic-data.md)
 - [Cloud (kế hoạch)](docs/cloud.md)
 - [AGENTS.md](AGENTS.md): quy ước cho người và agent làm việc trong repo
 - [web/README.md](web/README.md) và [db/README.md](db/README.md)

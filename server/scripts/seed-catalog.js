@@ -24,6 +24,9 @@ export function assertSeedAllowed(env = process.env) {
     throw Object.assign(new Error('DATABASE_URL is not a valid URL'), { code: 'SEED_REFUSED' });
   }
   if (!LOCAL_HOSTS.has(url.hostname)) throw Object.assign(new Error('Seed allowed only for loopback hosts'), { code: 'SEED_REFUSED' });
+  if (!['postgres:', 'postgresql:'].includes(url.protocol) || url.search || url.hash) {
+    throw Object.assign(new Error('Seed requires a PostgreSQL URL without query parameters or fragments'), { code: 'SEED_REFUSED' });
+  }
   if (env.SEED_CATALOG_CONFIRM !== CONFIRM_VALUE) {
     throw Object.assign(new Error(`Set SEED_CATALOG_CONFIRM=${CONFIRM_VALUE} to confirm a local synthetic seed`), { code: 'SEED_NOT_CONFIRMED' });
   }
