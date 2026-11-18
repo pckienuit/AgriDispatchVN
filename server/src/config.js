@@ -1,3 +1,12 @@
+export function readBookingConfig(env = process.env) {
+  const base = readConfig(env);
+  let origin;
+  try { origin = new URL(env.ACCOUNT_SERVICE_URL); } catch { throw new Error('Invalid booking identity configuration'); }
+  const token = env.INTERNAL_SERVICE_TOKEN;
+  if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash || typeof token !== 'string' || token.length < 32 || token.length > 256 || /[\r\n]/.test(token)) throw new Error('Invalid booking identity configuration');
+  return { ...base, accountServiceUrl: env.ACCOUNT_SERVICE_URL, internalServiceToken: token };
+}
+
 export function readConfig(env = process.env) {
   const portText = env.PORT ?? '3000';
   if (!/^\d+$/.test(portText) || Number(portText) < 1 || Number(portText) > 65535) {

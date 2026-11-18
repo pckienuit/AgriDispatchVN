@@ -6,11 +6,12 @@ import { test } from 'node:test';
 import { createServer } from 'node:net';
 
 const entry = fileURLToPath(new URL('../src/server.js', import.meta.url));
+const identity = { ACCOUNT_SERVICE_URL: 'http://127.0.0.1:1', INTERNAL_SERVICE_TOKEN: 'synthetic-lifecycle-token-32-characters' };
 test('occupied port must not log a false listening signal', async (t) => {
   const occupied = createServer().listen(0, '0.0.0.0');
   await once(occupied, 'listening');
   t.after(() => new Promise((resolve) => occupied.close(resolve)));
-  const child = spawn(process.execPath, [entry], { env: { ...process.env, PORT: String(occupied.address().port), DATABASE_URL: 'postgresql://localhost/app' } });
+  const child = spawn(process.execPath, [entry], { env: { ...process.env, ...identity, PORT: String(occupied.address().port), DATABASE_URL: 'postgresql://localhost/app' } });
   let stdout = '';
   let stderr = '';
   child.stdout.on('data', (data) => { stdout += data; });
@@ -29,7 +30,7 @@ test('missing config fails fast without disclosing secrets', async () => {
   assert.match(stderr, /Startup failed/);
 });
 test('SIGTERM drains HTTP and shuts down cleanly', { timeout: 15000 }, async (t) => {
-  const child = spawn(process.execPath, [entry], { env: { ...process.env, PORT: '31879', DATABASE_URL: 'postgresql://test:test@127.0.0.1:1/app' } });
+  const child = spawn(process.execPath, [entry], { env: { ...process.env, ...identity, PORT: '31879', DATABASE_URL: 'postgresql://test:test@127.0.0.1:1/app' } });
   t.after(() => { if (child.exitCode === null) child.kill('SIGKILL'); });
   const exit = once(child, 'exit');
   await new Promise((resolve, reject) => {
