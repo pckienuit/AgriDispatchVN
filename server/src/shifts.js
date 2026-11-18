@@ -137,7 +137,7 @@ async function loadEvents(client, shiftId) {
   }));
 }
 
-function summaryDto(row) {
+function summaryDto(row, actorId) {
   return {
     id: row.id,
     packageId: row.package_id,
@@ -146,11 +146,12 @@ function summaryDto(row) {
     completedAt: row.completed_at ? row.completed_at.toISOString() : null,
     areaM2: row.area_m2,
     note: row.note,
+    canOperate: actorId !== undefined && row.operator_id === actorId,
   };
 }
 
-async function shiftView(client, row) {
-  return { shift: { ...summaryDto(row), events: await loadEvents(client, row.id) } };
+async function shiftView(client, row, actorId) {
+  return { shift: { ...summaryDto(row, actorId), events: await loadEvents(client, row.id) } };
 }
 
 async function confirmReadiness(pool, actor, bookingId, flags) {
@@ -338,6 +339,21 @@ export function createShiftRouter({ pool, authenticate }) {
     return [actor.roles.includes('operator'), actor.roles.includes('coop'), actor.roles.includes('provider')];
   }
 
+  router.get('/api/shift-packages', authenticate, route(['operator'], async (req) => {
+    let window;
+    try { window = parsePagination(req.query); } catch (error) { throw fail(error.status, error.code); }
+    const { rows } = await pool.query(`SELECT p.id,p.locality,p.window_start_at,p.window_end_at,
+      (SELECT count(*)::int FROM dispatch.package_bookings pb WHERE pb.package_id=p.id) AS booking_count,
+      NOT EXISTS (SELECT 1 FROM dispatch.package_bookings pb
+        LEFT JOIN LATERAL (SELECT drained,mature,intake_ready FROM dispatch.readiness_events r
+          WHERE r.booking_id=pb.booking_id ORDER BY r.sequence DESC LIMIT 1) latest ON true
+        WHERE pb.package_id=p.id AND NOT COALESCE(latest.drained AND latest.mature AND latest.intake_ready,false)) AS ready
+      FROM dispatch.packages p WHERE p.operator_id=$1 AND p.status='CLAIMED'
+        AND NOT EXISTS (SELECT 1 FROM dispatch.shifts s WHERE s.package_id=p.id)
+      ORDER BY p.window_start_at,p.id LIMIT $2 OFFSET $3`, [req.actor.id, window.limit, window.offset]);
+    return { body: { packages: rows.map((row) => ({ id:row.id,locality:row.locality,startAt:row.window_start_at.toISOString(),endAt:row.window_end_at.toISOString(),bookingCount:row.booking_count,ready:row.ready })) } };
+  }));
+
   router.get('/api/shifts', authenticate, route(READ_ROLES, async (req) => {
     let window;
     try {
@@ -347,24 +363,24 @@ export function createShiftRouter({ pool, authenticate }) {
     }
     const [operator, coop, provider] = scopeFlags(req.actor);
     const { rows } = await pool.query(
-      `SELECT s.* FROM dispatch.shifts s JOIN dispatch.packages p ON p.id = s.package_id
+      `SELECT s.*,p.operator_id FROM dispatch.shifts s JOIN dispatch.packages p ON p.id = s.package_id
         WHERE ($1::boolean AND p.operator_id = $4) OR ($2::boolean AND p.coop_id = $4) OR ($3::boolean AND p.provider_id = $4)
         ORDER BY s.started_at DESC, s.id DESC LIMIT $5 OFFSET $6`,
       [operator, coop, provider, req.actor.id, window.limit, window.offset],
     );
-    return { body: { shifts: rows.map(summaryDto) } };
+    return { body: { shifts: rows.map((row) => summaryDto(row, req.actor.id)) } };
   }));
 
   router.get('/api/shifts/:id', authenticate, route(READ_ROLES, async (req) => {
     const shiftId = identifier(req.params.id);
     const [operator, coop, provider] = scopeFlags(req.actor);
     const { rows } = await pool.query(
-      `SELECT s.* FROM dispatch.shifts s JOIN dispatch.packages p ON p.id = s.package_id
+      `SELECT s.*,p.operator_id FROM dispatch.shifts s JOIN dispatch.packages p ON p.id = s.package_id
         WHERE s.id = $1 AND (($2::boolean AND p.operator_id = $5) OR ($3::boolean AND p.coop_id = $5) OR ($4::boolean AND p.provider_id = $5))`,
       [shiftId, operator, coop, provider, req.actor.id],
     );
     if (!rows[0]) throw fail(404, 'NOT_FOUND');
-    return { body: await shiftView(pool, rows[0]) };
+    return { body: await shiftView(pool, rows[0], req.actor.id) };
   }));
 
   return router;

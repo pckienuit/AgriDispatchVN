@@ -52,6 +52,14 @@ Each write is permission-checked, transactional and audited. Exact endpoint payl
 
 ## Observability and configuration
 
+### Shift UI and read contract (G10b)
+
+- `#shifts` lists visible shifts; assigned operators also see unstarted claimed packages. `#shift/:id` shows history and server-derived `canOperate`. Providers/coops have read-only views; API mutation ownership remains authoritative.
+- `GET /api/shift-packages?limit=20&offset=0`: operator only, bounded pagination, own claimed packages without a shift. Returns `packages: [{id,locality,startAt,endAt,bookingCount,ready}]`. `ready` reflects latest owner confirmations, not a reservation: start rechecks readiness under the package lock.
+- `GET /api/shifts` returns `shifts`; `GET /api/shifts/:id` returns `shift` with ordered `events`. Read DTO includes `canOperate` for the current actor. Start/pause/resume/complete write responses need not carry an operation grant; UI reloads the authorized read before showing further controls.
+- `POST /api/packages/:id/shifts/start {}`; `POST /api/shifts/:id/pause {reason}`; `POST /api/shifts/:id/resume {}`; `POST /api/shifts/:id/complete {areaM2,note?}`. Only assigned operator writes. Area is integer m²; pause reason and optional note are bounded to 500 characters. Completion does not consent to acceptance or confirm payment.
+- Reproduce local browser check with a disposable `TEST_DATABASE_URL` and `SYNTHETIC_LOGIN_FILE` pointing outside Git: run `node server/tests/helpers/operations-browser-server.mjs`, then `node server/tests/browser-smoke.mjs http://127.0.0.1:33100 --operations` in another terminal with the same variables. Stop fixture server with SIGTERM to close both services and drop only its generated test DB. Synthetic role grants exist only in this test fixture.
+
 `GET /health` liveness never queries DB; deployment adds build SHA. `GET /ready` checks DB and service-specific required configuration. Request ID must link cross-service operations without tokens or request bodies in logs.
 
 Existing `DATABASE_URL`, `PORT`, `TEST_DATABASE_URL` retained. Planned service settings: `SERVICE_NAME`, `ACCOUNT_SERVICE_URL`, `INTERNAL_SERVICE_TOKEN`, `BUILD_SHA`; cloud storage settings chosen after Hơn checks quota/identity. Runtime must validate configured values, not silently create a default production secret.

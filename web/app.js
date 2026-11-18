@@ -4,6 +4,7 @@
 // All API data is inserted with textContent or createElement; nothing from the server is parsed as HTML.
 
 import { recruitmentRoute, renderRecruitment } from './recruitment.js';
+import { operationsRoute, renderOperations } from './operations.js';
 
 const API_TIMEOUT_MS = 10000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -852,6 +853,8 @@ if (isBrowser) {
     setSessionUi();
     const recruitment = recruitmentRoute(location.hash);
     if (recruitment) return renderRecruitment({ main, api, session, announce, route: recruitment, signIn: requireSignIn });
+    const operations = operationsRoute(location.hash);
+    if (operations) return renderOperations({ main, api, session, announce, route: operations, signIn: requireSignIn });
     if (route.name === 'services') return renderServices();
     if (route.name === 'service') return renderService(route.id);
     if (route.name === 'fields') return renderFields();

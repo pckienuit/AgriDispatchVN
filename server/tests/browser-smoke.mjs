@@ -65,7 +65,45 @@ try {
   await send('Page.navigate', { url: origin.href });
   await wait("document.querySelectorAll('.card').length===3");
   await shot('desktop-catalog');
-  if (process.argv.includes('--recruitment')) {
+  if (process.argv.includes('--operations')) {
+    const fixture=JSON.parse(await readFile(process.env.SYNTHETIC_LOGIN_FILE,'utf8'));
+    const login=async(role)=>{
+      await route('#login',"!!document.querySelector('#login-email')");
+      await fill('#login-email',`synthetic-${role}@example.com`);await fill('#login-password',fixture.password);
+      await click('form button[type=submit]');await wait("document.querySelector('#logout-button').hidden===false");
+    };
+    await login('operator');
+    await route('#shifts',"[...document.querySelectorAll('button')].some(b=>b.textContent==='Bắt đầu ca')");
+    await shot('operations-desktop-start');
+    await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Bắt đầu ca').click()");
+    await wait("location.hash.startsWith('#shift/') && !!document.querySelector('#shift-reason')");
+    const shiftHash=await evaluate('location.hash');
+    await shot('operations-desktop-running');
+    await click('form button[type=submit]');assert.equal(await evaluate('document.activeElement.id'),'shift-reason');
+    await fill('#shift-reason','Mưa mô phỏng');await click('form button[type=submit]');
+    await wait("[...document.querySelectorAll('button')].some(b=>b.textContent==='Tiếp tục ca')");
+    await shot('operations-desktop-paused');
+    await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Tiếp tục ca').click()");
+    await wait("!!document.querySelector('#shift-area')");
+    await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});
+    await fill('#shift-area','12001');await evaluate("document.querySelector('#shift-area').closest('form').requestSubmit()");
+    await wait("document.querySelector('main').innerText.includes('Diện tích vượt tổng')");
+    console.log('OPERATIONS_LAYOUT',JSON.stringify(await evaluate(`({innerWidth,clientWidth:document.documentElement.clientWidth,scrollWidth:document.documentElement.scrollWidth,controls:[...document.querySelectorAll('input,button')].map(e=>({text:e.id||e.textContent,left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right}))})`)));
+    assert.ok(await evaluate('[...document.querySelectorAll("input,button")].every(e=>e.getBoundingClientRect().right<=document.documentElement.clientWidth)'), 'Control clipped by viewport');
+    await shot('operations-mobile-area-error');
+    await fill('#shift-area','12000');await fill('#shift-note','Hoàn thành mô phỏng, chưa nghiệm thu');
+    await evaluate("document.querySelector('#shift-area').closest('form').requestSubmit()");
+    await wait("!document.querySelector('#shift-area') && document.querySelector('main').innerText.includes('Diện tích đã ghi: 12000 m²')");
+    assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'));
+    assert.equal(await evaluate("document.querySelectorAll('.timeline li').length"),4);
+    await shot('operations-mobile-completed');
+    await click('#logout-button');await wait("!!document.querySelector('#login-email')");await login('provider');
+    await route(shiftHash,"!!document.querySelector('.timeline')");
+    assert.equal(await evaluate("document.querySelectorAll('main form').length"),0);
+    await shot('operations-mobile-provider-readonly');
+    assert.deepEqual(errors,[]);
+    console.log('OPERATIONS_BROWSER_PASS: real gateway assigned operator start/pause/resume/complete, area rejection and provider read-only; desktop/mobile.');
+  } else if (process.argv.includes('--recruitment')) {
     const fixture = JSON.parse(await readFile(process.env.SYNTHETIC_LOGIN_FILE, 'utf8'));
     const login = async (role) => {
       await route('#login', "!!document.querySelector('#login-email')");
