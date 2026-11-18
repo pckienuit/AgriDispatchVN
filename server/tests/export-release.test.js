@@ -201,7 +201,7 @@ test('rejects malformed --sha before commit lookup', async (t) => {
 });
 
 test('refuses allowlisted secret-like filenames without writing output', async (t) => {
-  for (const secretPath of ['server/config/.env.production', 'server/keys/tls.key', 'server/private/.env.example']) {
+  for (const secretPath of ['server/config/.env.production', 'server/keys/tls.key', 'server/private/.env.example', 'infra/terraform/terraform.tfstate', 'infra/terraform/approved.tfplan', 'infra/terraform/prod.tfvars', 'infra/kubernetes/kubeconfig-prod', 'infra/terraform/.terraform/plugin']) {
     const { repo, output } = await fixture(t, { ...BASE_FILES, [secretPath]: 'X=1\n' });
 
     const run = await runExport(repo, ['--output', output]);

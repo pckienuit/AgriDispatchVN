@@ -19,6 +19,7 @@ const ALLOW_PREFIXES = ['server/', 'db/', 'web/', 'infra/', 'functions/', '.gith
 const ALLOW_DOCS = new Set(['api', 'architecture', 'development', 'cloud', 'synthetic-data', 'benchmark', 'benchmark-bookings', 'evidence-recovery', 'release-export'].map((n) => `docs/${n}.md`));
 const SECRET_NAME = /(^|\/)(\.env(\..+)?|\.npmrc|\.netrc|\.htpasswd|credentials(\.json)?|id_(rsa|ecdsa|ed25519)|auth\.json)$|\.(pem|key|p12|pfx)$|(^|\/)(private|node_modules)\//;
 const ENV_EXAMPLE = /(^|\/)\.env\.example$/;
+const DEPLOY_SECRET = /(^|\/)(\.terraform\/|kubeconfig[^/]*$|[^/]*-kubeconfig$)|\.(tfstate(\..*)?|tfplan|tfvars(\.json)?)$/;
 
 const allowed = (p) => ALLOW_FILES.has(p) || ALLOW_DOCS.has(p) || ALLOW_PREFIXES.some((prefix) => p.startsWith(prefix));
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -72,7 +73,7 @@ async function main() {
   const included = [];
   const excluded = [];
   for (const e of entries) {
-    if ((SECRET_NAME.test(e.path) && !ENV_EXAMPLE.test(e.path)) || /(^|\/)(private|node_modules)\//.test(e.path)) {
+    if ((SECRET_NAME.test(e.path) && !ENV_EXAMPLE.test(e.path)) || DEPLOY_SECRET.test(e.path) || /(^|\/)(private|node_modules)\//.test(e.path)) {
       if (allowed(e.path)) throw new Error(`refusing export: secret-like tracked path ${e.path}`);
       excluded.push({ path: e.path, reason: 'secret-like filename' });
     } else if (!allowed(e.path)) {

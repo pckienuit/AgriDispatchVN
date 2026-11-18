@@ -21,6 +21,7 @@ node server/scripts/export-release.js --output /abs/dir/release.tar.gz --sha HEA
 - `--sha` không hợp lệ hoặc không phải commit.
 - Có file tracked bị coi là bí mật theo tên (`.env` không phải `.env.example`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `credentials*`, `id_rsa`, `auth.json`, `.npmrc`, `.netrc`, đường dẫn `private/`, `node_modules/`) nằm trong allowlist.
 - Có file `.gitattributes` tracked. File này có thể đổi byte của archive.
+- Có Terraform state/plan/input thật, thư mục `.terraform/` hoặc kubeconfig được track dưới đường dẫn cho phép. `.tfvars.example` chỉ là mẫu, không chứa secret thật.
 - Byte thực trong archive khác Git blob, gồm trường hợp attributes ngoài commit thay nội dung. Mỗi file được đọc từ archive và đối chiếu số byte/SHA-256 trước khi ghi manifest.
 - Allowlist không khớp file nào.
 
