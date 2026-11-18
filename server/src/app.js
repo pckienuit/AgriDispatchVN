@@ -15,6 +15,7 @@ import { createActivityRouter } from './activity.js';
 import { createRequestContext } from './observability.js';
 import { createPostponementRouter } from './postponement.js';
 import { createEvidenceRouter } from './evidence.js';
+const { AbortSignal } = globalThis;
 
 export function createApp({ pool, accountServiceUrl, internalServiceToken, buildSha = 'development', log, evidenceStore = null }) {
   const app = express();
@@ -30,6 +31,11 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken, build
     res.set('Cache-Control', 'no-store');
     try {
       await pool.query('SELECT 1');
+      if (accountServiceUrl) {
+        const identity = await fetch(new URL('/ready', accountServiceUrl), { redirect: 'error', signal: AbortSignal.timeout(2000) });
+        await identity.body?.cancel();
+        if (identity.status !== 200) throw new Error('Identity dependency unavailable');
+      }
       res.json({ status: 'ready' });
     } catch {
       res.status(503).json({ status: 'unavailable' });
