@@ -7,10 +7,10 @@ import { once } from 'node:events';
 import { createPool } from '../../src/db.js';
 import { createApp } from '../../src/app.js';
 import { migrate } from '../../scripts/migrate.js';
+import { parseDisposableRoot } from '../helpers/test-db.js';
 
 // Destructive tests require a dedicated database explicitly named *_test.
-const url = new URL(process.env.TEST_DATABASE_URL ?? 'postgresql://localhost/missing');
-assert.match(decodeURIComponent(url.pathname), /_test$/, 'TEST_DATABASE_URL must identify a dedicated *_test database');
+const url = parseDisposableRoot(process.env.TEST_DATABASE_URL);
 
 test('real PostgreSQL readiness and transactional migration lifecycle', async (t) => {
   const pool = createPool(url.href, { statementTimeout: 60000 });
