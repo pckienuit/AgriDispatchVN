@@ -14,7 +14,10 @@ COPY web ./web
 CMD ["sh", "-c", "npm run lint && npm test && npm run test:integration"]
 
 FROM node:26-alpine AS runtime
+ARG BUILD_SHA=development
 ENV NODE_ENV=production
+ENV BUILD_SHA=${BUILD_SHA}
+LABEL org.opencontainers.image.revision=${BUILD_SHA}
 WORKDIR /app
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json package-lock.json ./

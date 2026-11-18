@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { sanitizeRequestId } from './observability.js';
 
 const { AbortSignal } = globalThis;
 const roles = new Set(['farmer', 'provider', 'operator', 'coop', 'admin']);
@@ -20,7 +21,8 @@ export function createAccountAuth({ accountServiceUrl, internalServiceToken, tim
     try {
       const response = await fetch(new URL('/internal/introspect', url), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Service-Token': internalServiceToken },
+        headers: { 'Content-Type': 'application/json', 'X-Service-Token': internalServiceToken,
+          ...(sanitizeRequestId(req.requestId) ? {'X-Request-ID':req.requestId} : {}) },
         body: JSON.stringify({ token }),
         signal: AbortSignal.timeout(timeoutMs),
         redirect: 'error',

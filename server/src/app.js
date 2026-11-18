@@ -12,10 +12,12 @@ import { createAcceptanceRouter } from './acceptance.js';
 import { createDisputeRouter } from './disputes.js';
 import { createRemedyRouter } from './remedies.js';
 import { createActivityRouter } from './activity.js';
+import { createRequestContext } from './observability.js';
 
-export function createApp({ pool, accountServiceUrl, internalServiceToken }) {
+export function createApp({ pool, accountServiceUrl, internalServiceToken, buildSha = 'development', log }) {
   const app = express();
   app.disable('x-powered-by');
+  app.use(createRequestContext({serviceName:'booking-service',buildSha,log}));
   app.use((req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');
     next();

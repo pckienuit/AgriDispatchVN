@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { sanitizeRequestId } from './observability.js';
 
 const { AbortSignal } = globalThis;
 const routes = new Set(['POST /api/auth/register', 'POST /api/auth/login', 'POST /api/auth/logout', 'GET /api/me']);
@@ -13,6 +14,7 @@ export function createAccountGateway({ accountServiceUrl, timeoutMs = 3000 }) {
     res.set('Cache-Control', 'no-store');
     try {
       const headers = { 'Content-Type': 'application/json' };
+      if (sanitizeRequestId(req.requestId)) headers['X-Request-ID']=req.requestId;
       if (req.get('Authorization')) headers.Authorization = req.get('Authorization');
       const response = await fetch(new URL(req.path, origin), {
         method: req.method, headers,

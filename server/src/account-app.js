@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import express from 'express';
+import { createRequestContext } from './observability.js';
 import { hashPassword, verifyPassword } from './auth/password.js';
 import {
   clearRateLimit,
@@ -97,7 +98,7 @@ function sendError(res, error) {
   res.status(error.status).json({ error: { code: error.code } });
 }
 
-export function createAccountApp({ pool, ...options }) {
+export function createAccountApp({ pool, buildSha = 'development', log, ...options }) {
   const { internalServiceToken, sessionTtlSeconds, throttle } = checkAccountOptions(options);
   const serviceDigest = createHash('sha256').update(internalServiceToken).digest();
   let dummyHash;
@@ -129,6 +130,7 @@ export function createAccountApp({ pool, ...options }) {
 
   const app = express();
   app.disable('x-powered-by');
+  app.use(createRequestContext({serviceName:'account-service',buildSha,log}));
   app.use((req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');
     next();

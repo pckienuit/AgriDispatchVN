@@ -19,7 +19,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   try {
     const config = readAccountConfig();
     const pool = createPool(config.databaseUrl);
-    const server = createAccountApp({ pool, ...config }).listen(config.port, '0.0.0.0');
+    const server = createAccountApp({ pool, ...config, buildSha:process.env.BUILD_SHA ?? 'development' }).listen(config.port, '0.0.0.0');
     server.once('listening', () => {
       console.log(`Account service listening on port ${config.port}`);
     });

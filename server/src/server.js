@@ -5,7 +5,7 @@ import { createPool } from './db.js';
 try {
   const config = readConfig();
   const pool = createPool(config.databaseUrl);
-  const server = createApp({ pool, accountServiceUrl: process.env.ACCOUNT_SERVICE_URL, internalServiceToken: process.env.INTERNAL_SERVICE_TOKEN }).listen(config.port, '0.0.0.0');
+  const server = createApp({ pool, accountServiceUrl: process.env.ACCOUNT_SERVICE_URL, internalServiceToken: process.env.INTERNAL_SERVICE_TOKEN, buildSha:process.env.BUILD_SHA ?? 'development' }).listen(config.port, '0.0.0.0');
   server.once('listening', () => {
     console.log(`Listening on port ${config.port}`);
   });
