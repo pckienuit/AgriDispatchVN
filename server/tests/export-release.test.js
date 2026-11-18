@@ -35,6 +35,7 @@ const BASE_FILES = {
   'web/index.html': '<!doctype html>\n',
   'functions/thumbnail/index.cjs': 'module.exports = {};\n',
   'infra/Dockerfile': 'FROM node:26\n',
+  'infra/terraform/backend.hcl.example': '# Synthetic backend template, no credentials\n',
   'Jenkinsfile': 'pipeline { agent any }\n',
   'azure-pipelines.yml': 'trigger: none\n',
   'docs/testing.md': '# test matrix\n',
@@ -47,7 +48,7 @@ const BASE_FILES = {
 };
 const EXPECTED_FILES = [
   '.env.example', '.gitignore', '.nvmrc', 'README.md', 'docs/cloud.md', 'docs/evidence-recovery.md', 'docs/release-export.md', 'functions/thumbnail/index.cjs',
-  'infra/Dockerfile', 'Jenkinsfile', 'azure-pipelines.yml', 'docs/testing.md', 'docs/terraform.md', 'docs/cloud-deploy.md', 'docs/pipelines.md', 'docs/database-deploy.md', 'package-lock.json', 'package.json', 'server/src/app.js', 'web/index.html',
+  'infra/Dockerfile', 'infra/terraform/backend.hcl.example', 'Jenkinsfile', 'azure-pipelines.yml', 'docs/testing.md', 'docs/terraform.md', 'docs/cloud-deploy.md', 'docs/pipelines.md', 'docs/database-deploy.md', 'package-lock.json', 'package.json', 'server/src/app.js', 'web/index.html',
 ].sort();
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -208,7 +209,7 @@ test('rejects malformed --sha before commit lookup', async (t) => {
 });
 
 test('refuses allowlisted secret-like filenames without writing output', async (t) => {
-  for (const secretPath of ['server/config/.env.production', 'server/keys/tls.key', 'server/private/.env.example', 'infra/terraform/terraform.tfstate', 'infra/terraform/approved.tfplan', 'infra/terraform/prod.tfvars', 'infra/kubernetes/kubeconfig-prod', 'infra/terraform/.terraform/plugin']) {
+  for (const secretPath of ['infra/terraform/backend.hcl', 'server/config/.env.production', 'server/keys/tls.key', 'server/private/.env.example', 'infra/terraform/terraform.tfstate', 'infra/terraform/approved.tfplan', 'infra/terraform/prod.tfvars', 'infra/kubernetes/kubeconfig-prod', 'infra/terraform/.terraform/plugin']) {
     const { repo, output } = await fixture(t, { ...BASE_FILES, [secretPath]: 'X=1\n' });
 
     const run = await runExport(repo, ['--output', output]);

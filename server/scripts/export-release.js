@@ -19,7 +19,7 @@ const ALLOW_PREFIXES = ['server/', 'db/', 'web/', 'infra/', 'functions/', '.gith
 const ALLOW_DOCS = new Set(['api', 'architecture', 'development', 'cloud', 'synthetic-data', 'benchmark', 'benchmark-bookings', 'evidence-recovery', 'release-export', 'testing', 'terraform', 'cloud-deploy', 'pipelines', 'database-deploy'].map((n) => `docs/${n}.md`));
 const SECRET_NAME = /(^|\/)(\.env(\..+)?|\.npmrc|\.netrc|\.htpasswd|credentials(\.json)?|id_(rsa|ecdsa|ed25519)|auth\.json)$|\.(pem|key|p12|pfx)$|(^|\/)(private|node_modules)\//;
 const ENV_EXAMPLE = /(^|\/)\.env\.example$/;
-const DEPLOY_SECRET = /(^|\/)(\.terraform\/|kubeconfig[^/]*$|[^/]*-kubeconfig$)|\.(tfstate(\..*)?|tfplan|tfvars(\.json)?)$/;
+const DEPLOY_SECRET = /(^|\/)(backend\.hcl$|\.terraform\/|kubeconfig[^/]*$|[^/]*-kubeconfig$)|\.(tfstate(\..*)?|tfplan|tfvars(\.json)?)$/;
 
 const allowed = (p) => ALLOW_FILES.has(p) || ALLOW_DOCS.has(p) || ALLOW_PREFIXES.some((prefix) => p.startsWith(prefix));
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
