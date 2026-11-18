@@ -50,6 +50,10 @@ Each write is permission-checked, transactional and audited. Exact endpoint payl
 - Disputes: party opens a case with evidence, other party responds; uninvolved mediator proposes versioned remedy. Independent party consent to same version is required for resolution. Unresolved closure leaves disputed obligations explicit and does not settle booking or block unrelated bookings.
 - Upload: signed/authorized private object access; allowlisted file types and size, server-bound ownership, no secrets in URLs/logs retained as evidence. Thumbnail input/output prefixes differ; idempotency includes object version.
 
+### Acceptance UI permissions
+
+`GET /api/bookings/:id/acceptance` now also returns `permissions: {party,canPropose,blockedByDispute}`. `party` is `owner`, `provider` or null for a coordinating coop read. `canPropose` needs an independent assigned provider, completed shift, no current agreement and no blocking dispute. These read hints can become stale; every write still rechecks its existing transaction/ownership rules. A role label alone does not permit signing for another party.
+
 ### Dispatch read contract
 
 - UI routes `#dispatch` and `#package/:id` support coop grouping and provider machine registration/claim/cancellation. Owner delegates from `#booking/:id`; UI picks live coop names rather than entering account IDs. `GET /api/coordinators` is authenticated farmer/coop, bounded list of `{id,name}` only; names are role-directory entries, not proof of external certification. `GET /api/bookings/:id/coordinator` is owner-only and returns `{coordinatorId,canAssign}`. POST remains authoritative and refuses changing delegation after grouping.

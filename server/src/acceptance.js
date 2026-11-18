@@ -248,7 +248,9 @@ async function consentAcceptance(pool, actor, bookingId, version) {
 
 async function readAcceptance(pool, actor, bookingId) {
   const { rows } = await pool.query(
-    `SELECT b.id FROM dispatch.bookings b
+    `SELECT b.id,b.state,b.owner_id,p.provider_id,
+      EXISTS (SELECT 1 FROM dispatch.shifts s WHERE s.package_id=p.id AND s.status='COMPLETED') AS completed
+      FROM dispatch.bookings b
        LEFT JOIN dispatch.package_bookings pb ON pb.booking_id = b.id
        LEFT JOIN dispatch.packages p ON p.id = pb.package_id
       WHERE b.id = $1 AND (b.owner_id = $2 OR p.provider_id = $2 OR p.coop_id = $2)`,
@@ -256,7 +258,14 @@ async function readAcceptance(pool, actor, bookingId) {
   );
   if (!rows[0]) throw fail(404, 'NOT_FOUND');
   const latest = await currentAcceptance(pool, bookingId);
-  return { status: 200, body: { acceptance: latest ? await acceptanceDto(pool, latest) : null } };
+  const acceptance = latest ? await acceptanceDto(pool, latest) : null;
+  const booking = rows[0];
+  const blockedByDispute = await hasOpenDispute(pool, bookingId);
+  const party = booking.owner_id === actor.id ? 'owner' : booking.provider_id === actor.id ? 'provider' : null;
+  const canPropose = party === 'provider' && actor.roles.includes('provider')
+    && booking.provider_id !== booking.owner_id && booking.state === 'ASSIGNED' && booking.completed
+    && !blockedByDispute && !acceptance?.agreed;
+  return { status: 200, body: { acceptance, permissions: { party, canPropose, blockedByDispute } } };
 }
 
 async function reportPayment(pool, actor, bookingId, input) {
