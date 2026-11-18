@@ -1,14 +1,31 @@
 import { Buffer } from 'node:buffer';
+import { randomUUID } from 'node:crypto';
+import {
+  buildTrustedProxyBlockList,
+  checkTrustedProxyHops,
+  deriveClientIdentityKey,
+  resolveClientIp,
+  signClientIdentity,
+} from './client-identity.js';
 import { sanitizeRequestId } from './observability.js';
 
 const { AbortSignal } = globalThis;
 const routes = new Set(['POST /api/auth/register', 'POST /api/auth/login', 'POST /api/auth/logout', 'GET /api/me']);
 
 // Same-origin browser adapter, not a generic proxy. No internal endpoint or arbitrary target forwarding.
-export function createAccountGateway({ accountServiceUrl, timeoutMs = 3000 }) {
+export function createAccountGateway({
+  accountServiceUrl,
+  internalServiceToken,
+  trustedProxyHops = 0,
+  trustedProxyCidrs = null,
+  timeoutMs = 3000,
+}) {
   const origin = new URL(accountServiceUrl);
   if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error('Invalid account service origin');
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 10000) throw new Error('Invalid identity timeout');
+  const hops = checkTrustedProxyHops(trustedProxyHops);
+  const trustedProxyList = buildTrustedProxyBlockList(trustedProxyCidrs);
+  const signingKey = internalServiceToken === undefined ? null : deriveClientIdentityKey(internalServiceToken);
   return async (req, res, next) => {
     const roleList=req.method==='GET'&&['/api/role-requests','/api/admin/role-requests'].includes(req.path);
     const roleWrite=req.method==='POST'&&(req.path==='/api/role-requests'||/^\/api\/admin\/role-requests\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(approve|reject)$/i.test(req.path));
@@ -24,8 +41,21 @@ export function createAccountGateway({ accountServiceUrl, timeoutMs = 3000 }) {
     res.set('Cache-Control', 'no-store');
     try {
       const headers = { 'Content-Type': 'application/json' };
-      if (sanitizeRequestId(req.requestId)) headers['X-Request-ID']=req.requestId;
+      const requestId = sanitizeRequestId(req.requestId) ?? sanitizeRequestId(req.get('X-Request-ID')) ?? (signingKey ? randomUUID() : null);
+      if (requestId) headers['X-Request-ID'] = requestId;
       if (req.get('Authorization')) headers.Authorization = req.get('Authorization');
+      if (signingKey) {
+        const clientIp = resolveClientIp(req, { trustedProxyHops: hops, trustedProxyList });
+        if (clientIp) {
+          Object.assign(headers, signClientIdentity({
+            key: signingKey,
+            address: clientIp,
+            method: req.method,
+            path: req.path,
+            requestId: requestId ?? '',
+          }));
+        }
+      }
       const response = await fetch(target, {
         method: req.method, headers,
         ...(req.method === 'POST' ? { body: JSON.stringify(req.body ?? {}) } : {}),

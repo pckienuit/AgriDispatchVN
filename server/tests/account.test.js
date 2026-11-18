@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { createAccountApp } from '../src/account-app.js';
 import { hashPassword, verifyPassword } from '../src/auth/password.js';
 import { readAccountConfig } from '../src/account-server.js';
+import { deriveClientIdentityKey, signClientIdentity } from '../src/client-identity.js';
 
 const SECRET = 'x'.repeat(32);
 const DATABASE_URL = 'postgresql://user:local_test_only@localhost/accounts';
@@ -39,7 +40,9 @@ test('account config requires an adequate internal secret without echoing it', (
     (error) => /INTERNAL_SERVICE_TOKEN/.test(error.message) && !error.message.includes(short),
   );
   const config = readAccountConfig({ DATABASE_URL, INTERNAL_SERVICE_TOKEN: SECRET });
-  assert.deepEqual(config, { port: 3001, databaseUrl: DATABASE_URL, internalServiceToken: SECRET, sessionTtlSeconds: 28800 });
+  assert.deepEqual(config, { port: 3001, databaseUrl: DATABASE_URL, internalServiceToken: SECRET, sessionTtlSeconds: 28800, requireSignedClientIdentity: false });
+  assert.equal(readAccountConfig({ DATABASE_URL, INTERNAL_SERVICE_TOKEN: SECRET, REQUIRE_SIGNED_CLIENT_IDENTITY: 'true' }).requireSignedClientIdentity, true);
+  assert.throws(() => readAccountConfig({ DATABASE_URL, INTERNAL_SERVICE_TOKEN: SECRET, REQUIRE_SIGNED_CLIENT_IDENTITY: 'yes' }), /REQUIRE_SIGNED_CLIENT_IDENTITY/);
 });
 
 test('session TTL and port are bounded', () => {
@@ -193,4 +196,70 @@ test('account process drains HTTP and exits 0 on SIGTERM', { timeout: 15000 }, a
   const [code, signal] = await exit;
   assert.equal(code, 0);
   assert.equal(signal, null);
+});
+
+test('account app rejects invalid, expired, partial or mismatched signed client identity headers with 400 before DB work', async (t) => {
+  const url = await serve(t, { pool: noDb, internalServiceToken: SECRET_FOR_APP });
+  const key = deriveClientIdentityKey(SECRET_FOR_APP);
+  const validLoginHeaders = signClientIdentity({
+    key,
+    address: '203.0.113.9',
+    method: 'POST',
+    path: '/api/auth/login',
+    requestId: 'trace-id-0001',
+  });
+  const expiredHeaders = signClientIdentity({
+    key,
+    address: '203.0.113.9',
+    method: 'POST',
+    path: '/api/auth/login',
+    requestId: 'trace-id-0001',
+    timestampMs: Date.now() - 61_000,
+  });
+  const wrongPathHeaders = signClientIdentity({
+    key,
+    address: '203.0.113.9',
+    method: 'POST',
+    path: '/api/auth/register',
+    requestId: 'trace-id-0001',
+  });
+  const wrongMethodHeaders = signClientIdentity({
+    key,
+    address: '203.0.113.9',
+    method: 'POST',
+    path: '/api/me',
+    requestId: 'trace-id-0001',
+  });
+
+  for (const headers of [
+    { 'X-Client-Address': '203.0.113.9' },
+    { ...validLoginHeaders, 'X-Client-Signature': '0'.repeat(64) },
+    { ...validLoginHeaders, 'X-Client-Address': '1'.repeat(101) },
+    { ...expiredHeaders, 'X-Request-ID': 'trace-id-0001' },
+    { ...wrongPathHeaders, 'X-Request-ID': 'trace-id-0001' },
+    { ...validLoginHeaders, 'X-Request-ID': 'different-trace-id' },
+  ]) {
+    const response = await post(url, '/api/auth/login', { email: 'a@example.com', password: 'correct horse battery' }, headers);
+    assert.equal(response.status, 400, JSON.stringify(headers));
+    assert.deepEqual(await response.json(), { error: { code: 'INVALID_CLIENT_IDENTITY' } });
+  }
+
+  const meMismatch = await fetch(`${url}/api/me`, {
+    method: 'GET',
+    headers: { ...wrongMethodHeaders, 'X-Request-ID': 'trace-id-0001', authorization: `Bearer ${'a'.repeat(43)}` },
+  });
+  assert.equal(meMismatch.status, 400);
+  assert.deepEqual(await meMismatch.json(), { error: { code: 'INVALID_CLIENT_IDENTITY' } });
+});
+
+test('account app can require signed client identity on /api/* while keeping /health open', async (t) => {
+  assert.throws(
+    () => createAccountApp({ pool: noDb, internalServiceToken: SECRET_FOR_APP, requireSignedClientIdentity: 'yes' }),
+    /requireSignedClientIdentity/,
+  );
+  const url = await serve(t, { pool: noDb, internalServiceToken: SECRET_FOR_APP, requireSignedClientIdentity: true });
+  assert.equal((await fetch(`${url}/health`)).status, 200);
+  const unsigned = await post(url, '/api/auth/login', { email: 'a@example.com', password: 'correct horse battery' });
+  assert.equal(unsigned.status, 400);
+  assert.deepEqual(await unsigned.json(), { error: { code: 'INVALID_CLIENT_IDENTITY' } });
 });

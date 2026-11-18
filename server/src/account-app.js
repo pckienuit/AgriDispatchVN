@@ -1,6 +1,11 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import express from 'express';
+import {
+  deriveClientIdentityKey,
+  normalizeIp,
+  verifyClientIdentity,
+} from './client-identity.js';
 import { createRequestContext } from './observability.js';
 import { hashPassword, verifyPassword } from './auth/password.js';
 import {createRoleRequestRouter} from './role-requests.js';
@@ -8,6 +13,7 @@ import {
   clearRateLimit,
   createSession,
   createUser,
+  digest,
   findSession,
   findUserByEmail,
   hitRateLimit,
@@ -32,12 +38,20 @@ const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const BEARER = /^Bearer ([A-Za-z0-9_-]{43})$/;
 
 // Validates the service options once; shared with account-server so both entry points enforce the same rules.
-export function checkAccountOptions({ internalServiceToken, sessionTtlSeconds = DEFAULT_SESSION_TTL_SECONDS, throttle = {} } = {}) {
+export function checkAccountOptions({
+  internalServiceToken,
+  sessionTtlSeconds = DEFAULT_SESSION_TTL_SECONDS,
+  throttle = {},
+  requireSignedClientIdentity = false,
+} = {}) {
   if (typeof internalServiceToken !== 'string' || internalServiceToken.length < 32 || /\s/.test(internalServiceToken)) {
     throw new Error('INTERNAL_SERVICE_TOKEN must be at least 32 characters without whitespace');
   }
   if (!Number.isInteger(sessionTtlSeconds) || sessionTtlSeconds < 60 || sessionTtlSeconds > 86400) {
     throw new Error('SESSION_TTL_SECONDS must be an integer between 60 and 86400');
+  }
+  if (typeof requireSignedClientIdentity !== 'boolean') {
+    throw new Error('requireSignedClientIdentity must be a boolean');
   }
   const merged = { ...DEFAULT_THROTTLE, ...throttle };
   for (const [key, [min, max]] of Object.entries(THROTTLE_BOUNDS)) {
@@ -45,7 +59,7 @@ export function checkAccountOptions({ internalServiceToken, sessionTtlSeconds = 
       throw new Error(`${key} must be an integer between ${min} and ${max}`);
     }
   }
-  return { internalServiceToken, sessionTtlSeconds, throttle: merged };
+  return { internalServiceToken, sessionTtlSeconds, throttle: merged, requireSignedClientIdentity };
 }
 
 class HttpError extends Error {
@@ -100,8 +114,9 @@ function sendError(res, error) {
 }
 
 export function createAccountApp({ pool, buildSha = 'development', log, ...options }) {
-  const { internalServiceToken, sessionTtlSeconds, throttle } = checkAccountOptions(options);
+  const { internalServiceToken, sessionTtlSeconds, throttle, requireSignedClientIdentity } = checkAccountOptions(options);
   const serviceDigest = createHash('sha256').update(internalServiceToken).digest();
+  const clientIdentityKey = deriveClientIdentityKey(internalServiceToken);
   let dummyHash;
   // Unknown emails still pay one scrypt verification, so response time does not reveal account existence.
   const missingUserHash = () => {
@@ -110,7 +125,7 @@ export function createAccountApp({ pool, buildSha = 'development', log, ...optio
   };
   const allowed = (scope, value, max) => hitRateLimit(pool, scope, value, max, throttle.windowSeconds);
   const rateLimited = () => Object.assign(new HttpError(429, 'RATE_LIMITED'), { retryAfter: throttle.windowSeconds });
-  const clientKey = (req) => req.socket.remoteAddress ?? 'unknown';
+  const clientKey = (req) => req.verifiedClientIp ?? normalizeIp(req.socket.remoteAddress, { allowZone: true }) ?? 'unknown';
   const bearer = (req) => {
     const match = BEARER.exec(req.get('authorization') ?? '');
     if (!match) throw unauthorized();
@@ -137,6 +152,16 @@ export function createAccountApp({ pool, buildSha = 'development', log, ...optio
     next();
   });
   app.use(express.json({ limit: '64kb' }));
+  app.use((req, res, next) => {
+    if (!req.path.startsWith('/api/')) return next();
+    const identity = verifyClientIdentity(req, { key: clientIdentityKey });
+    if ((identity.present && !identity.ok) || (!identity.present && requireSignedClientIdentity)) {
+      res.set('Cache-Control', 'no-store');
+      return sendError(res, new HttpError(400, 'INVALID_CLIENT_IDENTITY'));
+    }
+    req.verifiedClientIp = identity.ok ? identity.address : null;
+    return next();
+  });
   app.get('/health', (req, res) => res.set('Cache-Control', 'no-store').json({ status: 'ok' }));
   app.get('/ready', async (req, res) => {
     res.set('Cache-Control', 'no-store');
@@ -169,14 +194,28 @@ export function createAccountApp({ pool, buildSha = 'development', log, ...optio
     requireExactFields(req.body, ['email', 'password']);
     const email = normalizeEmail(req.body.email);
     const password = passwordWithinBytes(req.body.password, 1);
+    const clientIp = clientKey(req);
+    const emailClientKey = JSON.stringify([email, clientIp]);
     // Both counters run before any scrypt work, so throttled traffic cannot consume CPU.
-    const emailAllowed = await allowed('login-email', email, throttle.loginEmailMax);
-    const ipAllowed = await allowed('login-ip', clientKey(req), throttle.loginIpMax);
+    const emailAllowed = await allowed('login-email', emailClientKey, throttle.loginEmailMax);
+    const ipAllowed = await allowed('login-ip', clientIp, throttle.loginIpMax);
     if (!emailAllowed || !ipAllowed) throw rateLimited();
     const user = await findUserByEmail(pool, email);
     const valid = await verifyPassword(password, user ? user.passwordHash : await missingUserHash());
     if (!user || !valid) throw new HttpError(401, 'INVALID_CREDENTIALS');
-    await clearRateLimit(pool, 'login-email', email);
+    await clearRateLimit(pool, 'login-email', emailClientKey);
+    // Successful authentication must not consume the per-IP failure budget used for NAT brute-force protection.
+    await pool.query(
+      `WITH dec AS (
+         UPDATE account.rate_limits
+            SET hits = hits - 1
+          WHERE bucket = $1 AND hits > 1 AND window_ends_at > now()
+         RETURNING 1
+       )
+       DELETE FROM account.rate_limits
+        WHERE bucket = $1 AND hits <= 1 AND NOT EXISTS (SELECT 1 FROM dec)`,
+      [digest(`login-ip\u0000${clientIp}`)],
+    );
     const session = await withTransaction(pool, (client) => createSession(client, user.id, sessionTtlSeconds));
     res.json({ token: session.token, expiresAt: session.expiresAt, user: publicUser(user) });
   }));

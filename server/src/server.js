@@ -6,7 +6,7 @@ import { configuredBlobStore } from './blob-store.js';
 try {
   const config = readBookingConfig();
   const pool = createPool(config.databaseUrl);
-  const server = createApp({ pool, accountServiceUrl: config.accountServiceUrl, internalServiceToken: config.internalServiceToken, buildSha:process.env.BUILD_SHA ?? 'development', evidenceStore:configuredBlobStore(process.env) }).listen(config.port, '0.0.0.0');
+  const server = createApp({ pool, accountServiceUrl: config.accountServiceUrl, internalServiceToken: config.internalServiceToken, trustedProxyHops: config.trustedProxyHops, trustedProxyCidrs: config.trustedProxyCidrs, buildSha:process.env.BUILD_SHA ?? 'development', evidenceStore:configuredBlobStore(process.env) }).listen(config.port, '0.0.0.0');
   server.once('listening', () => {
     console.log(`Listening on port ${config.port}`);
   });

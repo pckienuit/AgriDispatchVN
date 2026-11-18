@@ -122,6 +122,7 @@ export function renderAccount(input) {
             env: [
               { name: 'PORT', value: String(ACCOUNT_PORT) },
               { name: 'NODE_ENV', value: 'production' },
+              { name: 'REQUIRE_SIGNED_CLIENT_IDENTITY', value: 'true' },
               { name: 'BUILD_SHA', value: v.sha },
               secretEnv('DATABASE_URL', 'account-secrets', 'DATABASE_URL'),
               secretEnv('INTERNAL_SERVICE_TOKEN', 'account-secrets', 'INTERNAL_SERVICE_TOKEN'),

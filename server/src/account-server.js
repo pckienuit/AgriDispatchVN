@@ -7,12 +7,14 @@ import { resolve } from 'node:path';
 export function readAccountConfig(env = process.env) {
   const base = readConfig({ ...env, PORT: env.PORT ?? '3001' });
   const ttlText = env.SESSION_TTL_SECONDS ?? String(DEFAULT_SESSION_TTL_SECONDS);
+  const signed = env.REQUIRE_SIGNED_CLIENT_IDENTITY ?? 'false';
+  if (!['true', 'false'].includes(signed)) throw new Error('REQUIRE_SIGNED_CLIENT_IDENTITY must be true or false');
   if (!/^\d+$/.test(ttlText)) throw new Error('SESSION_TTL_SECONDS must be an integer between 60 and 86400');
   const { internalServiceToken, sessionTtlSeconds } = checkAccountOptions({
     internalServiceToken: env.INTERNAL_SERVICE_TOKEN,
     sessionTtlSeconds: Number(ttlText),
   });
-  return { port: base.port, databaseUrl: base.databaseUrl, internalServiceToken, sessionTtlSeconds };
+  return { port: base.port, databaseUrl: base.databaseUrl, internalServiceToken, sessionTtlSeconds, requireSignedClientIdentity: signed === 'true' };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

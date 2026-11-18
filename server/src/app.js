@@ -17,7 +17,7 @@ import { createPostponementRouter } from './postponement.js';
 import { createEvidenceRouter } from './evidence.js';
 const { AbortSignal } = globalThis;
 
-export function createApp({ pool, accountServiceUrl, internalServiceToken, buildSha = 'development', log, evidenceStore = null }) {
+export function createApp({ pool, accountServiceUrl, internalServiceToken, trustedProxyHops = 0, trustedProxyCidrs = null, buildSha = 'development', log, evidenceStore = null }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(createRequestContext({serviceName:'booking-service',buildSha,log}));
@@ -43,7 +43,7 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken, build
   });
   if (accountServiceUrl !== undefined || internalServiceToken !== undefined) {
     const authenticate = createAccountAuth({ accountServiceUrl, internalServiceToken });
-    app.use(createAccountGateway({ accountServiceUrl }));
+    app.use(createAccountGateway({ accountServiceUrl, internalServiceToken, trustedProxyHops, trustedProxyCidrs }));
     app.use(createCatalogRouter({ pool, authenticate }));
     app.use(createBookingRouter({ pool, authenticate }));
     app.use(createRecruitmentRouter({ pool, authenticate }));

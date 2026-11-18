@@ -3,6 +3,9 @@ import { once } from 'node:events';
 import express from 'express';
 import { test } from 'node:test';
 import { createAccountGateway } from '../src/account-gateway.js';
+import { deriveClientIdentityKey, verifyClientIdentity } from '../src/client-identity.js';
+
+const GATEWAY_SECRET = 'gateway-test-internal-service-token-0123456789';
 
 async function listen(t, app) {
   const server = app.listen(0, '127.0.0.1');
@@ -79,4 +82,76 @@ test('gateway bounds slow, redirected, oversized or non-JSON peer replies', asyn
     assert.equal(response.status, 503);
     assert.deepEqual(await response.json(), { error: { code: 'IDENTITY_UNAVAILABLE' } });
   }
+});
+
+test('gateway signs client identity over real socket IP and strips spoofed client or forwarding headers', async (t) => {
+  const key = deriveClientIdentityKey(GATEWAY_SECRET);
+  let verified;
+  let seenHeaders;
+  const url = await fixture(t, (req, res) => {
+    seenHeaders = { ...req.headers };
+    verified = verifyClientIdentity(req, { key });
+    res.json({ ok: true });
+  }, { internalServiceToken: GATEWAY_SECRET });
+
+  const response = await fetch(url + '/api/auth/login', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Forwarded-For': '198.51.100.77',
+      'X-Real-IP': '198.51.100.88',
+      Forwarded: 'for=198.51.100.99',
+      'X-Client-Address': '198.51.100.66',
+      'X-Client-Timestamp': '9999999999999',
+      'X-Client-Signature': 'f'.repeat(64),
+      'X-Service-Token': 'spoof-token',
+    },
+    body: JSON.stringify({ email: 'a@example.com', password: 'test-only-passphrase' }),
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(verified, { present: true, ok: true, address: '127.0.0.1' });
+  assert.equal(seenHeaders['x-forwarded-for'], undefined);
+  assert.equal(seenHeaders['x-real-ip'], undefined);
+  assert.equal(seenHeaders.forwarded, undefined);
+  assert.equal(seenHeaders['x-service-token'], undefined);
+});
+
+test('gateway uses rightmost trustedProxyHops from X-Forwarded-For and enforces optional CIDR allowlist', async (t) => {
+  const key = deriveClientIdentityKey(GATEWAY_SECRET);
+  const seen = [];
+  const trustedUrl = await fixture(t, (req, res) => {
+    seen.push(verifyClientIdentity(req, { key }));
+    res.json({ ok: true });
+  }, { internalServiceToken: GATEWAY_SECRET, trustedProxyHops: 1, trustedProxyCidrs: ['127.0.0.0/8'] });
+
+  const spoofedChain = await fetch(trustedUrl + '/api/auth/login', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Forwarded-For': '198.51.100.1, 203.0.113.42:51000',
+    },
+    body: JSON.stringify({ email: 'a@example.com', password: 'test-only-passphrase' }),
+  });
+  assert.equal(spoofedChain.status, 200);
+  assert.deepEqual(seen[0], { present: true, ok: true, address: '203.0.113.42' });
+
+  const untrustedPeerUrl = await fixture(t, (req, res) => {
+    seen.push(verifyClientIdentity(req, { key }));
+    res.json({ ok: true });
+  }, { internalServiceToken: GATEWAY_SECRET, trustedProxyHops: 1, trustedProxyCidrs: ['10.0.0.0/8'] });
+
+  const directBypass = await fetch(untrustedPeerUrl + '/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.42' },
+    body: JSON.stringify({ email: 'a@example.com', password: 'test-only-passphrase' }),
+  });
+  assert.equal(directBypass.status, 200);
+  assert.deepEqual(seen[1], { present: true, ok: true, address: '127.0.0.1' });
+});
+
+test('gateway validates internalServiceToken, trustedProxyHops and trustedProxyCidrs options', () => {
+  assert.throws(() => createAccountGateway({ accountServiceUrl: 'http://127.0.0.1:3001', internalServiceToken: 'short' }), /INTERNAL_SERVICE_TOKEN/);
+  assert.throws(() => createAccountGateway({ accountServiceUrl: 'http://127.0.0.1:3001', trustedProxyHops: -1 }), /trustedProxyHops/);
+  assert.throws(() => createAccountGateway({ accountServiceUrl: 'http://127.0.0.1:3001', trustedProxyHops: '1' }), /trustedProxyHops/);
+  assert.throws(() => createAccountGateway({ accountServiceUrl: 'http://127.0.0.1:3001', trustedProxyCidrs: ['bad-cidr'] }), /trustedProxyCidrs/);
 });

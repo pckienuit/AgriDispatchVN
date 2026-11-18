@@ -4,7 +4,10 @@ export function readBookingConfig(env = process.env) {
   try { origin = new URL(env.ACCOUNT_SERVICE_URL); } catch { throw new Error('Invalid booking identity configuration'); }
   const token = env.INTERNAL_SERVICE_TOKEN;
   if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash || typeof token !== 'string' || token.length < 32 || token.length > 256 || /[\r\n]/.test(token)) throw new Error('Invalid booking identity configuration');
-  return { ...base, accountServiceUrl: env.ACCOUNT_SERVICE_URL, internalServiceToken: token };
+  const hops = env.TRUST_PROXY_HOPS ?? '0';
+  if (!/^(?:[0-9]|10)$/.test(hops)) throw new Error('Invalid trusted proxy configuration');
+  const cidrs = env.TRUSTED_PROXY_CIDRS === undefined ? null : env.TRUSTED_PROXY_CIDRS.split(',').map(s => s.trim());
+  return { ...base, accountServiceUrl: env.ACCOUNT_SERVICE_URL, internalServiceToken: token, trustedProxyHops: Number(hops), trustedProxyCidrs: cidrs };
 }
 
 export function readConfig(env = process.env) {
