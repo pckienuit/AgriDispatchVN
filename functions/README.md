@@ -31,6 +31,17 @@ Local Docker/Azurite verification: Functions host 4.1055.300.9 indexed `Host.Fun
 
 Polling Blob trigger is chosen here; Event Grid is not silently assumed configured. Actual hosting-plan compatibility, managed identity, retries/poison behavior and successful private output still require verification in the deployed Azure environment before G9 completion.
 
+### Successful local output/replay probe
+
+A later isolated Docker run (`a6aae5`) exercised the actual Functions host with Azurite input, a synthetic identity endpoint and a synthetic HTTPS Blob output service. The container trusted only a test CA through `NODE_EXTRA_CA_CERTS`; TLS verification was not disabled. No production URL validation bypass was added.
+
+- Invalid input: rejected with `INVALID_IMAGE`, successful handled invocation, zero output objects.
+- Valid synthetic JPEG with EXIF: host invocation succeeded, output PUT returned 201.
+- Reuploading the same input bytes with a new input ETag invoked the host again; output create-only PUT returned 412, handler reported `created=false`, one unchanged output remained.
+- Parent independently re-read and decoded the output: JPEG 320×240, 719 bytes, no EXIF. SHA-256: `8cce7fa73426f40f2ec034ee4cad0100a6352ff88b50eef118d7dae11ae16116`.
+
+This proves local host-to-output wiring, not Azure managed identity, RBAC or the real Blob service. Output lived on the stub's isolated bind mount, not in Azurite. Task containers/networks were removed. Raw scratch artifacts are not a durable release evidence bundle; preserve a privacy-reviewed copy with the release manifest before report freeze.
+
 ## Evidence needed
 
 Record deployed image digest/SHA, private input creation, invocation ID/time, output JPEG checksum/dimensions, a duplicate-trigger replay with one unchanged output, invalid-input rejection and unauthorized read denial. Keep tokens, keys, original object names/PII and connection strings out of logs/screenshots. Local processor tests do not establish Azure invocation.
