@@ -427,6 +427,8 @@ export async function renderSettlement({ main, api, session, announce, route, si
     const nodes = [
       el('p', { class: 'lead', text: 'Bản thử nghiệm. Hệ thống chỉ ghi nhận đề nghị, đồng ý và khai báo thanh toán. Không chuyển tiền, không hoàn tiền, không giữ tiền ký quỹ.' }),
       el('p', { class: 'back' }, [el('a', { href: party === 'provider' ? '#dispatch' : `#booking/${id}`, text: party === 'provider' ? 'Quay lại gói dịch vụ' : 'Quay lại đơn' })]),
+      el('a', {href:`#complaint/${id}`,text:'Mở khiếu nại về đơn này'}),
+      el('a', {href:'#disputes',text:'Xem vụ việc đang theo dõi'}),
     ];
     if (blockedByDispute) {
       nodes.push(el('p', { class: 'alert warning', role: 'status', text: 'Đơn còn nghĩa vụ đang tranh chấp. Bạn vẫn xem được số liệu, nhưng chưa thể đề nghị, đồng ý, ghi báo hay xác nhận.' }));

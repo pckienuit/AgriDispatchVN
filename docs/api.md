@@ -50,6 +50,13 @@ Each write is permission-checked, transactional and audited. Exact endpoint payl
 - Disputes: party opens a case with evidence, other party responds; uninvolved mediator proposes versioned remedy. Independent party consent to same version is required for resolution. Unresolved closure leaves disputed obligations explicit and does not settle booking or block unrelated bookings.
 - Upload: signed/authorized private object access; allowlisted file types and size, server-bound ownership, no secrets in URLs/logs retained as evidence. Thumbnail input/output prefixes differ; idempotency includes object version.
 
+### Dispute review and UI
+
+- Routes `#disputes`, `#dispute/:id`, `#complaint/:bookingId` use persisted case/response/proposal history. Each party consents to the current mediator's exact proposal version. Closing unresolved retains the financial-write block, records reason/time and executes no payment or debt.
+- `GET /api/dispute-review` is a bounded queue of OPEN cases for current admins with no known involvement (owner, coordinator, package coop/provider/operator, claimant/respondent). `GET /api/dispute-review/:id/mediators` returns bounded eligible admin names/IDs. Eligible admins may read OPEN detail and proposals for triage, but only assigned independent mediator may propose or close; assignment does not sign for parties. Personal case list retains its narrower party/assigned-mediator scope.
+- A coop owning a booking may respond as that owner. Coordinating another owner's booking grants neither response nor consent authority. Migration 011 corrects the earlier farmer/provider-only respondent restriction without editing applied migrations.
+- Local `browser-smoke.mjs --dispatch` includes UI complaint, respondent reply, admin queue/assignment/proposal, separate party consents, resolution, and second-case unresolved closure. Existing confirmed payment stays unchanged and reads remain available while writes freeze.
+
 ### Acceptance UI permissions
 
 `GET /api/bookings/:id/acceptance` now also returns `permissions: {party,canPropose,blockedByDispute}`. `party` is `owner`, `provider` or null for a coordinating coop read. `canPropose` needs an independent assigned provider, completed shift, no current agreement and no blocking dispute. These read hints can become stale; every write still rechecks its existing transaction/ownership rules. A role label alone does not permit signing for another party.

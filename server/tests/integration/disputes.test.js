@@ -233,15 +233,13 @@ test('booking must have an assigned provider and must not be cancelled', async (
   assert.equal(cancelledRes.body.error.code, 'BOOKING_UNAVAILABLE');
 });
 
-test('respondent must hold farmer or provider role: coop-only owner cannot be the respondent', async () => {
+test('coop booking owner can be respondent and answer without signing for another owner', async () => {
   const { bookingId } = await claimed({ owner: COOP });
-  const refused = await disputes(bookingId, PROVIDER);
-  assert.equal(refused.status, 409);
-  assert.equal(refused.body.error.code, 'RESPONDENT_ROLE_MISSING');
-  const opened = await disputes(bookingId, COOP);
+  const opened = await disputes(bookingId, PROVIDER);
   assert.equal(opened.status, 201);
-  assert.equal(opened.body.dispute.claimantId, COOP);
-  assert.equal(opened.body.dispute.respondentId, PROVIDER);
+  assert.equal(opened.body.dispute.respondentId, COOP);
+  assert.equal((await respond(opened.body.dispute.id, 'Synthetic owner reply', COOP)).status, 201);
+  assert.equal((await respond(opened.body.dispute.id, 'Foreign coop reply', OTHER_COOP)).status, 404);
 });
 
 test('same owner and provider is a party conflict and cannot open', async () => {
@@ -325,7 +323,7 @@ test('detail returns full ordered event history for parties and assigned mediato
     assert.equal(detail.body.events[1].data.text, 'Synthetic reply');
     assert.equal(detail.body.events[1].actorId, PROVIDER);
   }
-  for (const actor of [COOP, OPERATOR, OTHER_FARMER, OTHER_PROVIDER, ADMIN_SEPARATE]) {
+  for (const actor of [COOP, OPERATOR, OTHER_FARMER, OTHER_PROVIDER]) {
     assert.equal((await get(`/api/disputes/${disputeId}`, actor)).status, 404);
   }
   assert.equal((await get(`/api/disputes/${id(999)}`, FARMER)).status, 404);
@@ -336,7 +334,7 @@ test('response is accepted only from the respondent; claimant, mediator and fore
   const { bookingId } = await claimed();
   const disputeId = (await disputes(bookingId, FARMER)).body.dispute.id;
   assert.equal((await respond(disputeId, 'Synthetic claimant reply', FARMER)).status, 403);
-  assert.equal((await respond(disputeId, 'Synthetic coop reply', COOP)).status, 403);
+  assert.equal((await respond(disputeId, 'Synthetic coop reply', COOP)).status, 404);
   assert.equal((await respond(disputeId, 'Synthetic outsider reply', OTHER_PROVIDER)).status, 404);
   assert.equal((await respond(disputeId, '   ', PROVIDER)).status, 400);
   assert.equal((await respond(disputeId, 'x'.repeat(2001), PROVIDER)).status, 400);
@@ -385,7 +383,7 @@ test('assigned mediator reads the case but cannot respond; reassignment audits t
   const again = await assign(disputeId, ADMIN_SEPARATE, ADMIN_SEPARATE);
   assert.equal(again.status, 200);
   assert.equal(again.body.dispute.mediatorId, ADMIN_SEPARATE);
-  assert.equal((await get(`/api/disputes/${disputeId}`, ADMIN_MEDIATOR)).status, 404);
+  assert.equal((await get(`/api/disputes/${disputeId}`, ADMIN_MEDIATOR)).status, 200);
   const detail = await get(`/api/disputes/${disputeId}`, ADMIN_SEPARATE);
   assert.deepEqual(detail.body.events.map((e) => e.type), ['DISPUTE_OPENED', 'MEDIATOR_ASSIGNED', 'MEDIATOR_ASSIGNED']);
   assert.deepEqual(detail.body.events[1].data, { mediatorId: ADMIN_MEDIATOR, previousMediatorId: null });

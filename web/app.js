@@ -7,6 +7,7 @@ import { recruitmentRoute, renderRecruitment } from './recruitment.js';
 import { operationsRoute, renderOperations } from './operations.js';
 import { dispatchRoute, renderDispatch } from './dispatch.js';
 import { settlementRoute, renderSettlement } from './settlement.js';
+import { disputesRoute, renderDisputes } from './disputes.js';
 
 const API_TIMEOUT_MS = 10000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -700,6 +701,7 @@ if (isBrowser) {
         el('p', { class: 'back' }, [el('a', { href: '#bookings', text: '← Quay lại đơn của tôi' })]),
         setMainHeading(`Đơn ${b.service.name}`),
         el('a', { class:'btn secondary', href:`#settlement/${b.id}`, text:'Nghiệm thu và ghi nhận tiền' }),
+        el('a', { class:'btn secondary', href:`#complaint/${b.id}`, text:'Mở khiếu nại' }),
         el('p', { class: 'alert', role: 'status', text: `Trạng thái: ${stateLabel(b.state)}. Trạng thái công việc không xác nhận đã nhận tiền.` }),
         el('dl', { class: 'facts' }, [
           el('div', {}, [el('dt', { text: 'Thửa ruộng' }), el('dd', { text: `${b.field.name} (${formatArea(b.field.areaM2)})` })]),
@@ -943,6 +945,8 @@ if (isBrowser) {
     if (dispatch) return renderDispatch({ main, api, session, announce, route: dispatch, signIn: requireSignIn });
     const settlement = settlementRoute(location.hash);
     if (settlement) return renderSettlement({ main, api, session, announce, route: settlement, signIn: requireSignIn });
+    const dispute = disputesRoute(location.hash);
+    if (dispute) return renderDisputes({ main, api, session, announce, route: dispute, signIn: requireSignIn });
     if (route.name === 'services') return renderServices();
     if (route.name === 'service') return renderService(route.id);
     if (route.name === 'fields') return renderFields();

@@ -10,7 +10,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const REASONS = ['AREA_MISMATCH', 'QUALITY', 'NO_SHOW', 'PAYMENT', 'OTHER'];
 const MAX_TEXT = 2000;
 const OPEN_ROLES = ['farmer', 'provider', 'coop'];
-const RESPOND_ROLES = ['farmer', 'provider'];
+const RESPOND_ROLES = ['farmer', 'provider', 'coop'];
 const DB_UNAVAILABLE_CODE = /^(08|57P01|53300|ECONN|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH)/;
 const RESTRICT_VIOLATION = '23001';
 const UNIQUE_VIOLATION = '23505';
@@ -144,7 +144,7 @@ async function openDispute(pool, actor, bookingId, input) {
     if (party.state !== 'ASSIGNED' || !party.provider_id) throw fail(409, 'BOOKING_UNAVAILABLE');
     const respondentId = party.owner_id === actor.id ? party.provider_id : party.owner_id;
     const respondentRole = await client.query(
-      "SELECT 1 FROM account.user_roles WHERE user_id = $1 AND role IN ('farmer', 'provider')",
+      "SELECT 1 FROM account.user_roles WHERE user_id = $1 AND role IN ('farmer', 'provider', 'coop')",
       [respondentId],
     );
     if (!respondentRole.rowCount) throw fail(409, 'RESPONDENT_ROLE_MISSING');
@@ -232,8 +232,23 @@ function listWindow(query) {
   }
 }
 
-// Visibility: claimant, respondent or assigned mediator. Anyone else, including coops and admins, gets 404.
+// Personal lists stay party/assigned-mediator scoped; eligible OPEN triage is a separate admin queue.
 const VISIBLE = 'claimant_id = $1 OR respondent_id = $1 OR mediator_id = $1';
+
+// A current uninvolved admin may triage OPEN cases; this is not mediator authority.
+export const DISPUTE_REVIEW_ELIGIBLE_SQL = `d.status='OPEN'
+  AND EXISTS (SELECT 1 FROM account.user_roles r WHERE r.user_id=$1 AND r.role='admin')
+  AND $1 NOT IN (d.claimant_id,d.respondent_id)
+  AND NOT EXISTS (SELECT 1 FROM dispatch.bookings b
+    LEFT JOIN dispatch.package_bookings pb ON pb.booking_id=b.id
+    LEFT JOIN dispatch.packages p ON p.id=pb.package_id
+    WHERE b.id=d.booking_id AND $1 IN (b.owner_id,b.coordinator_id,p.coop_id,p.provider_id,p.operator_id))`;
+
+export async function canReviewDispute(db, actor, disputeId) {
+  if (!actor.roles.includes('admin')) return false;
+  const result = await db.query(`SELECT 1 FROM dispatch.disputes d WHERE d.id=$2 AND ${DISPUTE_REVIEW_ELIGIBLE_SQL}`, [actor.id, disputeId]);
+  return result.rowCount > 0;
+}
 
 async function listDisputes(pool, actor, query) {
   const { limit, offset } = listWindow(query);
@@ -246,7 +261,8 @@ async function listDisputes(pool, actor, query) {
 }
 
 async function readDispute(pool, actor, disputeId) {
-  const { rows } = await pool.query(`SELECT ${DISPUTE_COLUMNS} FROM dispatch.disputes WHERE id = $2 AND (${VISIBLE})`, [actor.id, disputeId]);
+  const { rows } = await pool.query(`SELECT ${DISPUTE_COLUMNS} FROM dispatch.disputes d WHERE id = $2
+    AND ((${VISIBLE}) OR ($3::boolean AND ${DISPUTE_REVIEW_ELIGIBLE_SQL}))`, [actor.id, disputeId, actor.roles.includes('admin')]);
   if (!rows[0]) throw fail(404, 'NOT_FOUND');
   const events = await pool.query(
     'SELECT sequence, event_type, actor_id, data, created_at FROM dispatch.dispute_events WHERE dispute_id = $1 ORDER BY sequence',
@@ -285,6 +301,27 @@ export function createDisputeRouter({ pool, authenticate }) {
     const bookingId = identifier(req.params.id);
     const input = validateOpenInput(req.body);
     return openDispute(pool, req.actor, bookingId, input);
+  }));
+
+  router.get('/api/dispute-review', authenticate, handle(['admin'], async (req) => {
+    const {limit,offset}=listWindow(req.query);
+    const {rows}=await pool.query(`SELECT d.id,d.booking_id AS "bookingId",d.reason,d.status
+      FROM dispatch.disputes d WHERE ${DISPUTE_REVIEW_ELIGIBLE_SQL}
+      ORDER BY d.created_at,d.id LIMIT $2 OFFSET $3`, [req.actor.id,limit,offset]);
+    return {body:{items:rows,limit,offset}};
+  }));
+
+  router.get('/api/dispute-review/:id/mediators', authenticate, handle(['admin'], async (req) => {
+    const disputeId=identifier(req.params.id);
+    if (!await canReviewDispute(pool,req.actor,disputeId)) throw fail(404,'NOT_FOUND');
+    const {limit,offset}=listWindow(req.query);
+    const {rows}=await pool.query(`SELECT u.id,u.name FROM account.users u
+      WHERE EXISTS (SELECT 1 FROM account.user_roles r WHERE r.user_id=u.id AND r.role='admin')
+      AND NOT EXISTS (SELECT 1 FROM dispatch.disputes d JOIN dispatch.bookings b ON b.id=d.booking_id
+        LEFT JOIN dispatch.package_bookings pb ON pb.booking_id=b.id LEFT JOIN dispatch.packages p ON p.id=pb.package_id
+        WHERE d.id=$1 AND u.id IN(d.claimant_id,d.respondent_id,b.owner_id,b.coordinator_id,p.coop_id,p.provider_id,p.operator_id))
+      ORDER BY u.name,u.id LIMIT $2 OFFSET $3`,[disputeId,limit,offset]);
+    return {body:{items:rows,limit,offset}};
   }));
 
   router.get('/api/disputes', authenticate, handle(null, async (req) => listDisputes(pool, req.actor, req.query)));

@@ -1,4 +1,5 @@
 import express from 'express';
+import { canReviewDispute } from './disputes.js';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = (status, code) => Object.assign(new Error(code), { status, code });
@@ -110,7 +111,8 @@ export function createRemedyRouter({ pool, authenticate }) {
   }));
   router.get('/api/disputes/:id/proposals', authenticate, handle(async (c, req) => {
     const d = await lockedCase(c, identifier(req.params.id));
-    if (![d.claimant_id, d.respondent_id, d.mediator_id].includes(req.actor.id)) throw fail(404, 'NOT_FOUND');
+    if (![d.claimant_id, d.respondent_id, d.mediator_id].includes(req.actor.id)
+      && !await canReviewDispute(c,req.actor,d.id)) throw fail(404, 'NOT_FOUND');
     const proposals = await c.query(`SELECT p.version,p.text,p.mediator_id AS "mediatorId",p.created_at AS "createdAt",
       COALESCE((SELECT json_agg(json_build_object('actorId',s.actor_id,'at',s.created_at)) FROM dispatch.remedy_consents s WHERE s.dispute_id=p.dispute_id AND s.version=p.version),'[]') AS consents
       FROM dispatch.remedy_proposals p WHERE p.dispute_id=$1 ORDER BY p.version`, [d.id]);

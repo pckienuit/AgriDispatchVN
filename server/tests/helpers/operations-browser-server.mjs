@@ -19,7 +19,7 @@ const booking=createApp({pool,accountServiceUrl:'http://127.0.0.1:33101',interna
 await new Promise(r=>booking.listening?r():booking.once('listening',r));
 const post=async(path,body,token,headers={})=>{const res=await fetch('http://127.0.0.1:33100'+path,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token} : {}),...headers},body:JSON.stringify(body)});const data=await res.json();assert.ok(res.ok,`${path} ${res.status} ${JSON.stringify(data)}`);return data;};
 const actors={};
-for(const role of ['farmer','coop','provider','operator']){
+for(const role of ['farmer','coop','provider','operator','admin']){
  const email=`synthetic-${role}@example.com`;
  const {user}=await post('/api/auth/register',{email,password,name:`Synthetic ${role}`});
  if(role!=='farmer')await pool.query('INSERT INTO account.user_roles(user_id,role) VALUES($1,$2)',[user.id,role]);
