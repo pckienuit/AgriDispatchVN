@@ -286,7 +286,36 @@ export function createApiClient({ fetchImpl = globalThis.fetch, getToken, onUnau
     if (parsed === null) throw new ApiError(response.status, 'BAD_RESPONSE');
     return { status: response.status, data: parsed };
   }
-  return { request };
+  async function transfer(path,file) {
+    const upload=file!==undefined;
+    const valid=upload ? /^\/api\/disputes\/[0-9a-f-]{36}\/evidence$/i : /^\/api\/evidence\/[0-9a-f-]{36}\/(content|thumbnail)$/i;
+    if(!valid.test(path))throw new ApiError(0,'BAD_RESPONSE');
+    const token=getToken();
+    if(!token){onUnauthorized();throw new ApiError(401,'UNAUTHENTICATED');}
+    if(upload&&(!['image/jpeg','image/png'].includes(file?.type)||!Number.isSafeInteger(file.size)||file.size<1||file.size>5242880))throw new ApiError(400,'INVALID_IMAGE');
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+    try {
+      const response=await fetchImpl(path,{method:upload?'POST':'GET',headers:{Authorization:'Bearer '+token,...(upload?{'Content-Type':file.type}: {})},body:file,
+        signal:controller.signal,credentials:'omit',cache:'no-store',redirect:'error'});
+      if(!response.ok){
+        const data=await response.json();if(response.status===401)onUnauthorized();
+        throw new ApiError(response.status,data?.error?.code??'UNKNOWN',{uncertain:upload&&response.status>=500});
+      }
+      if(upload)return {status:response.status,data:await response.json()};
+      const type=response.headers.get('Content-Type');
+      if(!['image/jpeg','image/png'].includes(type))throw new ApiError(502,'BAD_RESPONSE');
+      const declared=response.headers.get('Content-Length');
+      if(declared!==null&&(!/^\d+$/.test(declared)||Number(declared)>5242880)){await response.body?.cancel();throw new ApiError(502,'BAD_RESPONSE');}
+      const reader=response.body.getReader(),chunks=[];let size=0;
+      for(;;){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>5242880){await reader.cancel();throw new ApiError(502,'BAD_RESPONSE');}chunks.push(value);}
+      if(size===0)throw new ApiError(502,'BAD_RESPONSE');
+      return new globalThis.Blob(chunks,{type});
+    } catch(error) {
+      if(error instanceof ApiError)throw error;
+      throw new ApiError(0,error?.name==='AbortError'?'TIMEOUT':'NETWORK',{uncertain:upload});
+    } finally {clearTimeout(timer);}
+  }
+  return { request, upload:(path,file)=>transfer(path,file), binary:path=>transfer(path) };
 }
 
 // ---- browser shell (runs only in a document) --------------------------------

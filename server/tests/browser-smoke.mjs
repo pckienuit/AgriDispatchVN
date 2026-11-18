@@ -255,6 +255,18 @@ try {
     await evaluate("document.querySelector('#dispute-details').closest('form').requestSubmit()");
     await wait("location.hash.startsWith('#dispute/') && document.querySelector('main').innerText.includes('Chưa có phương án')");
     const disputeHash=await evaluate('location.hash');
+    await wait("!!document.querySelector('#evidence-file')");
+    await evaluate(`(()=>{const bytes=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=='),c=>c.charCodeAt(0));const dt=new DataTransfer();dt.items.add(new File([bytes],'synthetic.png',{type:'image/png'}));const input=document.querySelector('#evidence-file');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));input.closest('form').requestSubmit();})()`);
+    await wait("document.querySelector('main').innerText.includes('Đã tải ảnh bằng chứng.')");
+    await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Xem ảnh thu nhỏ').click()");
+    await wait("document.querySelector('main').innerText.includes('Ảnh thu nhỏ đang được chuẩn bị')");
+    assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'));
+    await shot('evidence-mobile-uploaded-pending-thumbnail');
+    await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+    await shot('evidence-desktop-uploaded');
+    await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Tải ảnh gốc').click()");
+    await wait("![...document.querySelectorAll('button')].find(b=>b.textContent==='Tải ảnh gốc').disabled");
+    await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});
     await shot('dispute-mobile-opened');
     await route('#dispatch',"!!document.querySelector('#machine-name')");
     await route(settlementHash,"document.querySelector('main').innerText.includes('nghĩa vụ đang tranh chấp')");

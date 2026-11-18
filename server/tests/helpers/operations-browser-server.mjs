@@ -15,7 +15,10 @@ const db=await createDisposableDatabase(process.env.TEST_DATABASE_URL);
 const pool=createPool(db.url);await migrate(pool);await seedCatalog(pool);
 const secret=randomBytes(32).toString('base64url'),password=randomBytes(20).toString('base64url');
 const account=createAccountApp({pool,internalServiceToken:secret}).listen(33101,'127.0.0.1');
-const booking=createApp({pool,accountServiceUrl:'http://127.0.0.1:33101',internalServiceToken:secret}).listen(33100,'127.0.0.1');
+// Explicit synthetic browser-only object store. Never used by runtime server configuration.
+const objects=new Map();
+const evidenceStore={put:async(key,bytes,contentType)=>{objects.set(key,{bytes,contentType});return {etag:'"synthetic-browser"',versionId:null};},get:async(key,{thumbnail=false}={})=>thumbnail?null:objects.get(key)??null,remove:async key=>objects.delete(key)};
+const booking=createApp({pool,accountServiceUrl:'http://127.0.0.1:33101',internalServiceToken:secret,evidenceStore}).listen(33100,'127.0.0.1');
 await new Promise(r=>booking.listening?r():booking.once('listening',r));
 const post=async(path,body,token,headers={})=>{const res=await fetch('http://127.0.0.1:33100'+path,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token} : {}),...headers},body:JSON.stringify(body)});const data=await res.json();assert.ok(res.ok,`${path} ${res.status} ${JSON.stringify(data)}`);return data;};
 const actors={};

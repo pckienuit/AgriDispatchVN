@@ -1,4 +1,5 @@
 /* global location */
+import {renderEvidence} from './evidence.js';
 // Dispute UI: case list, case detail with proposals, complaint form, admin review queue.
 // Plain ES module, no storage, no HTML sinks. Server data is written with textContent only.
 // The server decides every permission. The UI only hides actions that cannot succeed.
@@ -436,7 +437,9 @@ export async function renderDisputes({ main, api, session, announce, route, sign
   }
 
   function detailPage(disputeId) {
+    let disposeEvidence=()=>{};
     async function load() {
+      disposeEvidence();
       content.replaceChildren(el('p', { role: 'status', text: 'Đang tải vụ việc…' }));
       try {
         const [detailRes, proposalRes] = await Promise.all([
@@ -497,6 +500,14 @@ export async function renderDisputes({ main, api, session, announce, route, sign
         })));
       }
       content.replaceChildren(...nodes);
+      const evidence=el('section',{class:'page','aria-label':'Bằng chứng ảnh riêng tư'});
+      content.append(evidence);
+      renderEvidence({container:evidence,api,active:()=>alive()&&evidence.isConnected,announce,disputeId:dispute.id}).then(cleanup=>{
+        if(!alive()||!evidence.isConnected){cleanup();return;}
+        const leave=()=>{cleanup();globalThis.removeEventListener('hashchange',leave);};
+        globalThis.addEventListener('hashchange',leave,{once:true});
+        disposeEvidence=leave;
+      });
     }
 
     reload = load;
