@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { readFile } from 'node:fs/promises';
 import { after, before, test } from 'node:test';
 import express from 'express';
 import { createDispatchRouter } from '../../src/dispatch.js';
@@ -485,6 +486,26 @@ test('mediator reassignment refuses a forged previous mediator and preserves pri
   assert.equal((await ctx.pool.query('SELECT mediator_id FROM dispatch.disputes WHERE id=$1', [disputeId])).rows[0].mediator_id, ADMIN_MEDIATOR);
   assert.equal(await count("SELECT count(*)::int AS n FROM dispatch.dispute_events WHERE dispute_id=$1 AND event_type='MEDIATOR_ASSIGNED'", [disputeId]), 1);
   assert.equal((await assign(disputeId, ADMIN_SEPARATE, ADMIN_SEPARATE)).status, 200);
+});
+
+test('deployment audit refuses inconsistent historical mediator events without rewriting history', async () => {
+  const { bookingId } = await claimed();
+  const disputeId = (await disputes(bookingId, FARMER)).body.dispute.id;
+  assert.equal((await assign(disputeId, ADMIN_MEDIATOR, ADMIN_SEPARATE)).status, 200);
+  const client = await ctx.pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Synthetic pre-016 corruption only. Changes and disabled triggers roll back together.
+    await client.query('ALTER TABLE dispatch.dispute_events DISABLE TRIGGER USER');
+    await client.query("UPDATE dispatch.dispute_events SET data=jsonb_set(data,'{previousMediatorId}',to_jsonb($2::text)) WHERE dispute_id=$1 AND event_type='MEDIATOR_ASSIGNED'", [disputeId, OTHER_FARMER]);
+    await client.query('ALTER TABLE dispatch.dispute_events ENABLE TRIGGER USER');
+    const audit = await readFile(new URL('../../../db/migrations/017_validate_mediator_history.sql', import.meta.url), 'utf8');
+    await assert.rejects(client.query(audit), { code: '23514' });
+  } finally {
+    await client.query('ROLLBACK');
+    client.release();
+  }
+  assert.equal((await ctx.pool.query("SELECT data->>'previousMediatorId' AS prior FROM dispatch.dispute_events WHERE dispute_id=$1 AND event_type='MEDIATOR_ASSIGNED'", [disputeId])).rows[0].prior, null);
 });
 
 test('database enforces one OPEN case per booking, party identity, responder and bounded event data', async () => {
