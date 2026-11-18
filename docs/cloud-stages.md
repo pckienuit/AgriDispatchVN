@@ -25,6 +25,10 @@ Implementation branch: `cloud/is402-2026-11-24`, from `22b56ae9d7f342e2b434c4cbf
 
 These are targets, not evidence of completion. G4 is the early handoff; infrastructure and CI work start with scaffold and must not wait for all extended workflows. Recruitment is mandatory, not an optional stretch. Prior demo thresholds, fees, speed rules and legal claims are not accepted business constants. Start with explicit request data and manual grouping, not an unverified optimizer.
 
+## Approved postponement boundary
+
+Project lead approved in chat on 18 November 2026: postpone a whole claimed package only before any shift starts. Every distinct actual booking owner and the assigned provider must personally consent to the same latest proposal version; proposing does not count as consent. A coordinating coop may propose but cannot sign for an owner; a coop that actually owns a booking retains that owner's authority. Keep the current schedule until consent is complete and the new interval passes machine/operator conflict checks plus the operator's accepted commitment covering the entire interval. Keep prior windows and consents as history; booking quote/request snapshots remain unchanged. No automatic fees, refunds, blame, timeout consent or assumed 3–5 day limit. This records scope approval, not implemented or deployed acceptance.
+
 ## Ownership and handoff
 
 Application developer supplies runnable code, schema, seed, tests, API changes and commit SHA. Infra owner Hơn checks credit/quota/SKU, prepares approved app/DB/Blob/permissions and returns target configuration plus logs. CI owner Duyên integrates pipeline, cross-service/cloud tests, Function invocation, load measurement and presentation evidence. Developer assists their code; owners must still run and understand their part. Never edit the same workflow/Compose file concurrently without assigning ownership.

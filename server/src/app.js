@@ -13,6 +13,7 @@ import { createDisputeRouter } from './disputes.js';
 import { createRemedyRouter } from './remedies.js';
 import { createActivityRouter } from './activity.js';
 import { createRequestContext } from './observability.js';
+import { createPostponementRouter } from './postponement.js';
 
 export function createApp({ pool, accountServiceUrl, internalServiceToken, buildSha = 'development', log }) {
   const app = express();
@@ -46,6 +47,7 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken, build
     app.use(createDisputeRouter({ pool, authenticate }));
     app.use(createRemedyRouter({ pool, authenticate }));
     app.use(createActivityRouter({ pool, authenticate }));
+    app.use(createPostponementRouter({ pool, authenticate }));
   }
   app.use(express.static(fileURLToPath(new URL('../../web/', import.meta.url)), { dotfiles: 'deny' }));
   app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND' } }));

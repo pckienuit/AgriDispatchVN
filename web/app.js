@@ -9,6 +9,7 @@ import { dispatchRoute, renderDispatch } from './dispatch.js';
 import { settlementRoute, renderSettlement } from './settlement.js';
 import { disputesRoute, renderDisputes } from './disputes.js';
 import { renderActivity } from './activity.js';
+import { postponementRoute, renderPostponement } from './postponement.js';
 
 const API_TIMEOUT_MS = 10000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -717,6 +718,8 @@ if (isBrowser) {
         el('ol', { class: 'timeline' }, data.events.map((ev) => el('li', { text: `${eventLabel(ev.type)}: ${stateLabel(ev.state)}, ${formatDateTime(ev.createdAt)}` }))),
       );
       focusMain();
+      await renderBookingSchedule(id, routeHash);
+      if (location.hash !== routeHash) return;
       if (session.user.roles.includes('farmer')) await renderReadiness(id, routeHash);
       if (location.hash === routeHash && session.user.roles.some(role => ['farmer', 'coop'].includes(role))) await renderCoordinator(id, routeHash);
     } catch (error) {
@@ -728,6 +731,24 @@ if (isBrowser) {
       }
       focusMain();
     }
+  }
+
+  async function renderBookingSchedule(id, routeHash) {
+    const section=el('section',{class:'page','aria-label':'Lịch thực hiện gói'});
+    main.append(section);
+    async function load() {
+      section.replaceChildren(loadingBlock('Đang tải lịch thực hiện…'));
+      try {
+        const {data}=await api.request('GET',`/api/bookings/${id}/postponement`,{auth:true});
+        if(location.hash!==routeHash || !section.isConnected)return;
+        if(data.packageId===null) { section.replaceChildren(el('p',{text:'Đơn chưa được gom gói. Khoảng thời gian trên đơn là yêu cầu ban đầu.'}));return; }
+        if(typeof data.packageId!=='string' || !UUID.test(data.packageId))throw new ApiError(502,'BAD_RESPONSE');
+        section.replaceChildren(el('p',{text:'Khoảng thời gian trên đơn là yêu cầu ban đầu, không đổi khi dời lịch. Xem lịch gói để biết khung giờ hiện tại và tự xác nhận đề xuất.'}),el('a',{class:'btn secondary',href:`#postponement/${data.packageId}`,text:'Xem lịch gói và đề xuất dời lịch'}));
+      } catch(error) {
+        if(location.hash===routeHash && section.isConnected)section.replaceChildren(errorBlock(error,load));
+      }
+    }
+    await load();
   }
 
   async function renderCoordinator(id, routeHash) {
@@ -949,6 +970,8 @@ if (isBrowser) {
     if (settlement) return renderSettlement({ main, api, session, announce, route: settlement, signIn: requireSignIn });
     const dispute = disputesRoute(location.hash);
     if (dispute) return renderDisputes({ main, api, session, announce, route: dispute, signIn: requireSignIn });
+    const postponement = postponementRoute(location.hash);
+    if (postponement) return renderPostponement({ main, api, session, announce, route: postponement, signIn: requireSignIn });
     if (route.name === 'services') return renderServices();
     if (route.name === 'service') return renderService(route.id);
     if (route.name === 'fields') return renderFields();
