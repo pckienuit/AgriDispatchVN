@@ -27,6 +27,8 @@ Parent chạy renderer và helper tests: tách migration identity, từ chối t
 
 ## Giới hạn chưa được gọi là PASS
 
+- Pipeline gọi `preflight.js`, `deploy.js`, `verify.js` cùng file target riêng ngoài Git. Gate kiểm manifest SUCCESS/publish, SHA/digest, identity tách biệt, hostname đúng target và xác nhận quota/chi phí không quá 24 giờ; **không tự chứng minh lời xác nhận là đúng**. Protected environment phải giới hạn người sửa/phê duyệt file target. Tham chiếu `TARGET_CONFIG_FILE`, `BUDGET_APPROVAL_ID`, `QUOTA_CHECKED_AT` qua môi trường, không nhét credential vào JSON target.
+- `deploy.js` mặc định chỉ in thứ tự, chỉ `--execute` mới gọi API thay đổi. Thứ tự account/migration, Function, Web Apps; lỗi không đồng nghĩa mọi service đã rollback. `verify.js` kiểm revision/replica/ready, cố ý trả `acceptanceComplete:false` vì còn phải kiểm giao tiếp nghiệp vụ và Blob invocation thật.
 - Azure CLI mới được đối chiếu syntax/help, chưa chạy slot swap, ACR pull digest, AKS Workload Identity/Key Vault CSI, private DNS/VNet hoặc identity storage thật.
 - NetworkPolicy cho HTTPS egress rộng; cần đối chiếu đường đi internal LB/source IP và probe Azure trước khi nghiệm thu.
 - Helper rollback phục hồi config production, có restart; không cam kết zero downtime.

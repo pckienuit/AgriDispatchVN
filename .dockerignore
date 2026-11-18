@@ -13,3 +13,5 @@ coverage
 **/*.tfvars.json
 **/kubeconfig*
 system-results
+.ci-ephemeral
+build-manifest.json
