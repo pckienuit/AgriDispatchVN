@@ -28,15 +28,27 @@ for(const role of ['farmer','coop','provider','operator']){
 const field=(await post('/api/fields',{name:'Thửa mô phỏng',locality:'Địa bàn mô phỏng',areaM2:12000},actors.farmer.token)).field;
 const startAt='2026-12-04T08:00:00Z',endAt='2026-12-04T12:00:00Z';
 const order=(await post('/api/bookings',{fieldId:field.id,serviceId:'00000000-0000-4000-8000-000000000102',startAt,endAt},actors.farmer.token,{'Idempotency-Key':'synthetic-operations-browser-0001'})).booking;
-await post(`/api/bookings/${order.id}/coordinator`,{coordinatorId:actors.coop.user.id},actors.farmer.token);
-const pkg=(await post('/api/packages',{bookingIds:[order.id]},actors.coop.token)).package;
+const dispatchUi=process.argv.includes('--dispatch');
+let pkg;
+let cancelPackageId;
+if(dispatchUi){
+ const extra=(await post('/api/bookings',{fieldId:field.id,serviceId:'00000000-0000-4000-8000-000000000102',startAt,endAt},actors.farmer.token,{'Idempotency-Key':'synthetic-cancel-browser-key-0001'})).booking;
+ await post(`/api/bookings/${extra.id}/coordinator`,{coordinatorId:actors.coop.user.id},actors.farmer.token);
+ cancelPackageId=(await post('/api/packages',{bookingIds:[extra.id]},actors.coop.token)).package.id;
+}
+if(!dispatchUi){
+ await post(`/api/bookings/${order.id}/coordinator`,{coordinatorId:actors.coop.user.id},actors.farmer.token);
+ pkg=(await post('/api/packages',{bookingIds:[order.id]},actors.coop.token)).package;
+}
 const job=(await post('/api/jobs',{title:'Tuyển thợ mô phỏng',locality:'Địa bàn mô phỏng',capacity:1,startAt,endAt},actors.provider.token)).job;
 const application=(await post(`/api/jobs/${job.id}/applications`,{},actors.operator.token)).application;
 const offer=(await post(`/api/applications/${application.id}/offers`,{},actors.provider.token)).offer;
 await post(`/api/offers/${offer.id}/accept`,{},actors.operator.token);
-const machine=(await post('/api/machines',{name:'Máy gặt mô phỏng',type:'harvester'},actors.provider.token)).machine;
-await post(`/api/packages/${pkg.id}/claim`,{machineId:machine.id,operatorId:actors.operator.user.id},actors.provider.token);
+if(!dispatchUi){
+ const machine=(await post('/api/machines',{name:'Máy gặt mô phỏng',type:'harvester'},actors.provider.token)).machine;
+ await post(`/api/packages/${pkg.id}/claim`,{machineId:machine.id,operatorId:actors.operator.user.id},actors.provider.token);
+}
 
-await writeFile(process.env.SYNTHETIC_LOGIN_FILE,JSON.stringify({password,packageId:pkg.id,bookingId:order.id}),{mode:0o600});
+await writeFile(process.env.SYNTHETIC_LOGIN_FILE,JSON.stringify({password,packageId:pkg?.id,bookingId:order.id,coopId:actors.coop.user.id,cancelPackageId}),{mode:0o600});
 console.log('OPERATIONS_SMOKE_READY');
 process.on('SIGTERM',async()=>{await Promise.all([account,booking].map(s=>new Promise(r=>{s.close(r);s.closeAllConnections();})));await pool.end();await db.drop();process.exit(0);});

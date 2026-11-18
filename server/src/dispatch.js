@@ -225,6 +225,21 @@ export function createDispatchRouter({ pool, authenticate }) {
     };
   }
 
+  router.get('/api/coordinators', authenticate, requireActor(['farmer', 'coop']), handle(async (req, res) => {
+    const { limit, offset } = listWindow(req.query);
+    const { rows } = await pool.query(`SELECT u.id,u.name FROM account.users u
+      WHERE EXISTS (SELECT 1 FROM account.user_roles r WHERE r.user_id=u.id AND r.role='coop')
+      ORDER BY u.name,u.id LIMIT $1 OFFSET $2`, [limit, offset]);
+    res.json({ items:rows, limit, offset });
+  }));
+
+  router.get('/api/bookings/:id/coordinator', authenticate, requireActor(['farmer', 'coop']), handle(async (req, res) => {
+    if (!isUuid(req.params.id)) throw new ApiError(400, 'INVALID_ID');
+    const { rows } = await pool.query('SELECT coordinator_id,state FROM dispatch.bookings WHERE id=$1 AND owner_id=$2', [req.params.id.toLowerCase(), req.actor.id]);
+    if (!rows[0]) throw new ApiError(404, 'NOT_FOUND');
+    res.json({ coordinatorId:rows[0].coordinator_id, canAssign:rows[0].state==='REQUESTED' });
+  }));
+
   router.post('/api/bookings/:id/coordinator', authenticate, requireActor(['farmer', 'coop']), handle(async (req, res) => {
     if (!isUuid(req.params.id)) throw new ApiError(400, 'INVALID_ID');
     const input = validateCoordinatorInput(req.body);

@@ -5,6 +5,7 @@
 
 import { recruitmentRoute, renderRecruitment } from './recruitment.js';
 import { operationsRoute, renderOperations } from './operations.js';
+import { dispatchRoute, renderDispatch } from './dispatch.js';
 
 const API_TIMEOUT_MS = 10000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -712,6 +713,7 @@ if (isBrowser) {
       );
       focusMain();
       if (session.user.roles.includes('farmer')) await renderReadiness(id, routeHash);
+      if (location.hash === routeHash && session.user.roles.some(role => ['farmer', 'coop'].includes(role))) await renderCoordinator(id, routeHash);
     } catch (error) {
       if (location.hash !== routeHash) return;
       if (error instanceof ApiError && error.status === 404) {
@@ -721,6 +723,38 @@ if (isBrowser) {
       }
       focusMain();
     }
+  }
+
+  async function renderCoordinator(id, routeHash) {
+    const section = el('section', { class:'page', 'aria-label':'Ủy quyền điều phối' });
+    main.append(section);
+    async function load() {
+      section.replaceChildren(loadingBlock('Đang tải ủy quyền…'));
+      try {
+        const { data } = await api.request('GET', `/api/bookings/${id}/coordinator`, { auth:true });
+        if (location.hash !== routeHash) return;
+        if (!data.canAssign) { section.replaceChildren(el('h2', { text:'Ủy quyền điều phối' }), el('p', { text:'Đơn đã được gom hoặc phân công, không thể đổi HTX ở bước này.' })); return; }
+        const directory = await api.request('GET', '/api/coordinators?limit=100', { auth:true });
+        if (location.hash !== routeHash) return;
+        const select = el('select', { id:'coordinator-id' }, [el('option', { value:'', text:'Chọn HTX' }), ...directory.data.items.map(item => el('option', { value:item.id, text:item.name }))]);
+        select.value = data.coordinatorId ?? '';
+        const submit = el('button', { type:'submit', class:'btn primary', text:'Ủy quyền HTX gom đơn' });
+        const feedback = el('div', { id:'coordinator-feedback', 'aria-live':'polite' });
+        const form = el('form', { class:'form' }, [el('div', { class:'field' }, [el('label', { for:'coordinator-id', text:'HTX được phép gom đơn này' }),select]), feedback,submit]);
+        section.replaceChildren(el('h2', { text:'Ủy quyền điều phối' }), el('p', { text:'HTX chỉ được gom đơn sau khi bạn ủy quyền. Không có quyền ký nghiệm thu hoặc xác nhận tiền thay bạn.' }), form);
+        form.addEventListener('submit', async event => {
+          event.preventDefault(); if (submit.disabled) return;
+          if (!select.value) { feedback.textContent='Chọn HTX trước khi ủy quyền.';select.focus();return; }
+          submit.disabled=true;
+          try {
+            await api.request('POST', `/api/bookings/${id}/coordinator`, { auth:true, body:{coordinatorId:select.value} });
+            if (location.hash === routeHash) { feedback.textContent='Đã lưu ủy quyền trên máy chủ.';announce(feedback.textContent); }
+          } catch(error) { if(location.hash===routeHash)feedback.replaceChildren(errorBlock(error,load)); }
+          finally { submit.disabled=false; }
+        });
+      } catch(error) { if(location.hash===routeHash)section.replaceChildren(errorBlock(error,load)); }
+    }
+    await load();
   }
 
   async function renderReadiness(id, routeHash) {
@@ -903,6 +937,8 @@ if (isBrowser) {
     if (recruitment) return renderRecruitment({ main, api, session, announce, route: recruitment, signIn: requireSignIn });
     const operations = operationsRoute(location.hash);
     if (operations) return renderOperations({ main, api, session, announce, route: operations, signIn: requireSignIn });
+    const dispatch = dispatchRoute(location.hash);
+    if (dispatch) return renderDispatch({ main, api, session, announce, route: dispatch, signIn: requireSignIn });
     if (route.name === 'services') return renderServices();
     if (route.name === 'service') return renderService(route.id);
     if (route.name === 'fields') return renderFields();

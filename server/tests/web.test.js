@@ -79,7 +79,7 @@ test('web files contain no em dash or en dash', async () => {
 test('frontend calls only same-origin contract paths', async () => {
   const text = await read('app.js');
   const paths = new Set([...text.matchAll(/['"`](\/api\/[a-z/]+)/g)].map((m) => m[1].replace(/\/$/, '')));
-  const allowed = ['/api/auth/login', '/api/auth/register', '/api/auth/logout', '/api/me', '/api/services', '/api/fields', '/api/bookings'];
+  const allowed = ['/api/auth/login', '/api/auth/register', '/api/auth/logout', '/api/me', '/api/services', '/api/fields', '/api/bookings', '/api/coordinators'];
   assert.ok(paths.size >= 6, `found only ${[...paths].join(', ')}`);
   for (const path of paths) assert.ok(allowed.includes(path), `unexpected path ${path}`);
   assert.equal(paths.has('/api/config'), false);

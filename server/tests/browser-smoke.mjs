@@ -65,7 +65,7 @@ try {
   await send('Page.navigate', { url: origin.href });
   await wait("document.querySelectorAll('.card').length===3");
   await shot('desktop-catalog');
-  if (process.argv.includes('--operations')) {
+  if (process.argv.includes('--operations') || process.argv.includes('--dispatch')) {
     const fixture=JSON.parse(await readFile(process.env.SYNTHETIC_LOGIN_FILE,'utf8'));
     const login=async(role)=>{
       await route('#login',"!!document.querySelector('#login-email')");
@@ -73,6 +73,46 @@ try {
       await click('form button[type=submit]');await wait("document.querySelector('#logout-button').hidden===false");
     };
     await login('farmer');
+    let packageHash;
+    if (process.argv.includes('--dispatch')) {
+      await route(`#booking/${fixture.bookingId}`,"!!document.querySelector('#coordinator-id')");
+      await fill('#coordinator-id',fixture.coopId);
+      await evaluate("document.querySelector('#coordinator-id').closest('form').requestSubmit()");
+      await wait("document.querySelector('#coordinator-feedback').innerText.includes('Đã lưu')");
+      await shot('dispatch-desktop-owner-delegation');
+      await click('#logout-button');await wait("!!document.querySelector('#login-email')");await login('coop');
+      await route(`#package/${fixture.cancelPackageId}`,"!!document.querySelector('#cancel-reason')");
+      await evaluate("document.querySelector('#cancel-reason').closest('form').requestSubmit()");
+      assert.equal(await evaluate('document.activeElement.id'),'cancel-reason');
+      await fill('#cancel-reason','Hủy gói mô phỏng trước ca');
+      await evaluate("document.querySelector('#cancel-reason').closest('form').requestSubmit()");
+      await wait("!document.querySelector('#cancel-reason') && document.querySelector('main').innerText.includes('Đã hủy')");
+      await shot('dispatch-desktop-coop-cancelled');
+      await route('#dispatch',"!!document.querySelector('input[name=booking]')");
+      await evaluate("document.querySelector('input[name=booking]').closest('form').requestSubmit()");
+      await wait("document.querySelector('main').innerText.includes('Chọn ít nhất')");
+      await click('input[name=booking]');
+      await evaluate("document.querySelector('input[name=booking]').closest('form').requestSubmit()");
+      await wait("location.hash.startsWith('#package/') && !!document.querySelector('#cancel-reason')");
+      packageHash=await evaluate('location.hash');
+      await shot('dispatch-desktop-coop-grouped');
+      await click('#logout-button');await wait("!!document.querySelector('#login-email')");await login('provider');
+      await route('#dispatch',"!!document.querySelector('#machine-name')");
+      await fill('#machine-name','Máy gặt từ giao diện mô phỏng');await fill('#machine-type','harvester');
+      await evaluate("document.querySelector('#machine-name').closest('form').requestSubmit()");
+      await wait("document.querySelector('.card')?.innerText.includes('Máy gặt từ giao diện')");
+      await route(packageHash,"!!document.querySelector('#claim-operator')");
+      await evaluate("document.querySelector('#claim-machine').selectedIndex=1;document.querySelector('#claim-operator').selectedIndex=1");
+      await shot('dispatch-desktop-provider-claim');
+      await evaluate("document.querySelector('#claim-machine').closest('form').requestSubmit()");
+      await wait("!document.querySelector('#claim-machine') && document.querySelector('main').innerText.includes('Đã có đơn vị nhận')");
+      await shot('dispatch-desktop-claimed');
+      await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});
+      await route('#dispatch',"!!document.querySelector('#machine-name')");
+      assert.ok(await evaluate('document.documentElement.scrollWidth<=document.documentElement.clientWidth'));
+      await shot('dispatch-mobile-provider');
+      await click('#logout-button');await wait("!!document.querySelector('#login-email')");await login('farmer');
+    }
     await route(`#booking/${fixture.bookingId}`,"!!document.querySelector('#ready-drained')");
     assert.equal(await evaluate("document.querySelector('#ready-drained').checked"),false);
     await click('#ready-drained');
@@ -117,6 +157,13 @@ try {
     await route(shiftHash,"!!document.querySelector('.timeline')");
     assert.equal(await evaluate("document.querySelectorAll('main form').length"),0);
     await shot('operations-mobile-provider-readonly');
+    if(process.argv.includes('--dispatch')){
+      await route(packageHash,"!!document.querySelector('#cancel-reason')");
+      await fill('#cancel-reason','Không được xóa ca đã làm');
+      await evaluate("document.querySelector('#cancel-reason').closest('form').requestSubmit()");
+      await wait("document.querySelector('main').innerText.includes('không thể hủy')");
+      await shot('dispatch-mobile-started-cancel-rejected');
+    }
     await click('#logout-button'); await wait("!!document.querySelector('#login-email')");
     await login('farmer');
     await route(`#booking/${fixture.bookingId}`,"!!document.querySelector('#readiness-submit')");

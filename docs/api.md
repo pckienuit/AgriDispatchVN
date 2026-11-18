@@ -52,6 +52,9 @@ Each write is permission-checked, transactional and audited. Exact endpoint payl
 
 ### Dispatch read contract
 
+- UI routes `#dispatch` and `#package/:id` support coop grouping and provider machine registration/claim/cancellation. Owner delegates from `#booking/:id`; UI picks live coop names rather than entering account IDs. `GET /api/coordinators` is authenticated farmer/coop, bounded list of `{id,name}` only; names are role-directory entries, not proof of external certification. `GET /api/bookings/:id/coordinator` is owner-only and returns `{coordinatorId,canAssign}`. POST remains authoritative and refuses changing delegation after grouping.
+- Local full browser path: run `server/tests/helpers/operations-browser-server.mjs --dispatch` with the disposable test variables described below, then `server/tests/browser-smoke.mjs http://127.0.0.1:33100 --dispatch`. Fixture creates accounts/accepted recruitment commitment only; owner delegation, coop grouping, machine creation, provider claim, readiness and shift lifecycle occur through UI. Browser also checks cancellation before a shift and rejection after a shift starts. This is local evidence, not cloud acceptance.
+
 - `GET /api/dispatch/bookings`: coop only; paginated `items` contains only REQUESTED bookings explicitly delegated to the current coop. Fields: `id,fieldName,locality,serviceId,serviceName,areaM2,startAt,endAt`. No owner ID or contact details. Grouping rechecks ownership, state and compatibility transactionally.
 - `GET /api/dispatch/operators`: provider only; paginated accepted commitments on the provider's jobs, retaining only users with a current operator role. Fields: `id,name,startAt,endAt,jobId`; **id is the operator account ID**, not offer ID. Same operator can appear on different jobs/windows. Listing does not prove availability; claim rechecks accepted commitment, exact window and resource conflicts.
 

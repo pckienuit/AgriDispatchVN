@@ -74,6 +74,15 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   const coopId = (await coopAccount.json()).user.id;
   await pool.query("INSERT INTO account.user_roles(user_id,role) VALUES($1,'coop')", [coopId]);
   const coopSession = await (await post(booking.url, '/api/auth/login', { email: 'synthetic-coop@example.com', password: input.password })).json();
+  const coordinatorRead = (path, token) => fetch(booking.url + path, { headers: { Authorization: 'Bearer ' + token } });
+  const directory = await coordinatorRead('/api/coordinators', session.token);
+  assert.equal(directory.status, 200);
+  assert.deepEqual((await directory.json()).items, [{ id:coopId, name:'HTX mô phỏng' }]);
+  const assignmentPath = `/api/bookings/${original.booking.id}/coordinator`;
+  const beforeAssignment = await (await coordinatorRead(assignmentPath, session.token)).json();
+  assert.equal(beforeAssignment.coordinatorId, null);
+  assert.equal(beforeAssignment.canAssign, true);
+  assert.equal((await coordinatorRead(assignmentPath, second.token)).status, 404);
   assert.equal((await post(booking.url, `/api/bookings/${original.booking.id}/coordinator`, { coordinatorId: coopId }, session.token)).status, 200);
   const scopedRead = (path, token) => fetch(booking.url + path, { headers: { Authorization: 'Bearer ' + token } });
   const delegated = await scopedRead('/api/dispatch/bookings', coopSession.token);
@@ -82,6 +91,7 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   assert.equal((await scopedRead('/api/dispatch/bookings', session.token)).status, 403);
   const grouped = await post(booking.url, '/api/packages', { bookingIds: [original.booking.id] }, coopSession.token);
   assert.equal(grouped.status, 201);
+  assert.equal((await (await coordinatorRead(assignmentPath, session.token)).json()).canAssign, false);
   const packageId = (await grouped.json()).package.id;
   const createRole = async (label, role) => {
     const email = `synthetic-${label}@example.com`;
