@@ -75,6 +75,11 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   await pool.query("INSERT INTO account.user_roles(user_id,role) VALUES($1,'coop')", [coopId]);
   const coopSession = await (await post(booking.url, '/api/auth/login', { email: 'synthetic-coop@example.com', password: input.password })).json();
   assert.equal((await post(booking.url, `/api/bookings/${original.booking.id}/coordinator`, { coordinatorId: coopId }, session.token)).status, 200);
+  const scopedRead = (path, token) => fetch(booking.url + path, { headers: { Authorization: 'Bearer ' + token } });
+  const delegated = await scopedRead('/api/dispatch/bookings', coopSession.token);
+  assert.equal(delegated.status, 200);
+  assert.deepEqual((await delegated.json()).items.map((item) => item.id), [original.booking.id]);
+  assert.equal((await scopedRead('/api/dispatch/bookings', session.token)).status, 403);
   const grouped = await post(booking.url, '/api/packages', { bookingIds: [original.booking.id] }, coopSession.token);
   assert.equal(grouped.status, 201);
   const packageId = (await grouped.json()).package.id;
@@ -97,6 +102,10 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   const offer = await post(booking.url, `/api/applications/${applicationId}/offers`, {}, provider.token);
   const offerId = (await offer.json()).offer.id;
   assert.equal((await post(booking.url, `/api/offers/${offerId}/accept`, {}, operator.token)).status, 200);
+  const acceptedOperators = await scopedRead('/api/dispatch/operators', provider.token);
+  assert.equal(acceptedOperators.status, 200);
+  assert.equal((await acceptedOperators.json()).items[0].id, operator.id);
+  assert.deepEqual((await (await scopedRead('/api/dispatch/bookings', coopSession.token)).json()).items, []);
   const machine = await post(booking.url, '/api/machines', { name: 'Synthetic harvester', type: 'harvester' }, provider.token);
   const machineId = (await machine.json()).machine.id;
   assert.equal((await post(booking.url, `/api/packages/${packageId}/claim`, { machineId, operatorId: operator.id }, provider.token)).status, 200);

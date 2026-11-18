@@ -50,6 +50,11 @@ Each write is permission-checked, transactional and audited. Exact endpoint payl
 - Disputes: party opens a case with evidence, other party responds; uninvolved mediator proposes versioned remedy. Independent party consent to same version is required for resolution. Unresolved closure leaves disputed obligations explicit and does not settle booking or block unrelated bookings.
 - Upload: signed/authorized private object access; allowlisted file types and size, server-bound ownership, no secrets in URLs/logs retained as evidence. Thumbnail input/output prefixes differ; idempotency includes object version.
 
+### Dispatch read contract
+
+- `GET /api/dispatch/bookings`: coop only; paginated `items` contains only REQUESTED bookings explicitly delegated to the current coop. Fields: `id,fieldName,locality,serviceId,serviceName,areaM2,startAt,endAt`. No owner ID or contact details. Grouping rechecks ownership, state and compatibility transactionally.
+- `GET /api/dispatch/operators`: provider only; paginated accepted commitments on the provider's jobs, retaining only users with a current operator role. Fields: `id,name,startAt,endAt,jobId`; **id is the operator account ID**, not offer ID. Same operator can appear on different jobs/windows. Listing does not prove availability; claim rechecks accepted commitment, exact window and resource conflicts.
+
 ## Observability and configuration
 
 ### Shift UI and read contract (G10b)

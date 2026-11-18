@@ -281,5 +281,60 @@ export function createDispatchRouter({ pool, authenticate }) {
     res.json({ package: { ...packageDto(rows[0], bookingIds.length), bookingIds } });
   }));
 
+  // Coop lists its own delegated REQUESTED bookings. Snapshot name/area/service; locality comes from the live field row.
+  router.get('/api/dispatch/bookings', authenticate, requireActor(['coop']), handle(async (req, res) => {
+    const { limit, offset } = listWindow(req.query);
+    const { rows } = await pool.query(
+      `SELECT b.id, b.field_name, f.locality, b.service_id, b.service_name, b.field_area_m2, b.start_at, b.end_at
+         FROM dispatch.bookings b
+         JOIN dispatch.fields f ON f.id = b.field_id AND f.owner_id = b.owner_id
+        WHERE b.coordinator_id = $1 AND b.state = 'REQUESTED'
+        ORDER BY b.created_at DESC, b.id DESC LIMIT $2 OFFSET $3`,
+      [req.actor.id, limit, offset],
+    );
+    res.json({
+      items: rows.map((row) => ({
+        id: row.id,
+        fieldName: row.field_name,
+        locality: row.locality,
+        serviceId: row.service_id,
+        serviceName: row.service_name,
+        areaM2: row.field_area_m2,
+        startAt: row.start_at.toISOString(),
+        endAt: row.end_at.toISOString(),
+      })),
+      limit,
+      offset,
+    });
+  }));
+
+  // Provider lists operators whose offer on its jobs is ACCEPTED. One application per job/operator and one live offer
+  // per application (migration 004), so each row is one distinct commitment. Operator role is re-checked live.
+  // Read-only: this lists choices for a later claim UI and grants no authority; claim checks the window and conflicts.
+  router.get('/api/dispatch/operators', authenticate, requireActor(['provider']), handle(async (req, res) => {
+    const { limit, offset } = listWindow(req.query);
+    const { rows } = await pool.query(
+      `SELECT o.operator_id AS id, u.name, j.start_at, j.end_at, j.id AS job_id
+         FROM dispatch.offers o
+         JOIN dispatch.jobs j ON j.id = o.job_id
+         JOIN account.users u ON u.id = o.operator_id
+        WHERE j.provider_id = $1 AND o.status = 'ACCEPTED'
+          AND EXISTS (SELECT 1 FROM account.user_roles r WHERE r.user_id = o.operator_id AND r.role = 'operator')
+        ORDER BY j.start_at, j.id, o.id LIMIT $2 OFFSET $3`,
+      [req.actor.id, limit, offset],
+    );
+    res.json({
+      items: rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        startAt: row.start_at.toISOString(),
+        endAt: row.end_at.toISOString(),
+        jobId: row.job_id,
+      })),
+      limit,
+      offset,
+    });
+  }));
+
   return router;
 }
