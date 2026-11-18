@@ -25,7 +25,11 @@ Trigger path: `evidence/{caseId}/{evidenceId}/{sha}`. Input is immutable create-
 
 Processor: JPEG/PNG only, at most 5 MiB and 4096×4096 pixels; shared structure check then sharp decode with `failOn: warning`, 5-second libvips timeout, rotate EXIF, fit inside 320×320 without enlargement, JPEG quality 80. Metadata is removed from derived image; original remains unchanged/private. Invalid inputs log fixed rejection codes and no output. Storage failure throws a fixed error for host retry. Decoder runs in-process, not a worker sandbox.
 
-Host timeout 30 seconds, Blob concurrency 1; queue poison handling maximum dequeue count 3. These are configured bounds, not evidence of a measured retry execution. Polling Blob trigger is chosen here; Event Grid is not silently assumed configured. Actual hosting-plan compatibility, trigger registration, managed identity, retries/poison behavior, invocation and output must be verified in the deployed environment before G9 completion.
+Host timeout 30 seconds, Blob concurrency 1; `extensions.blobs.poisonBlobThreshold=3` controls Blob poison handling. `extensions.queues.maxDequeueCount` did not change the Blob retry count in the exercised extension version: the initial local probe still made 5 attempts. The corrected local host reports PoisonBlobThreshold 3 and makes 3 failed invocations before moving the message to `webjobs-blobtrigger-poison`. This is total attempts, not 3 extra retries. No fixed retry interval is promised.
+
+Local Docker/Azurite verification: Functions host 4.1055.300.9 indexed `Host.Functions.thumbnail`, started its listener and invoked it after Blob creation. Invalid input was rejected without output; valid JPEG reached the private output write but deliberately failed because the identity endpoint was unavailable. No successful thumbnail output from this host probe is claimed. Connection-string authentication used only the official emulator development credential; identity-based EvidenceSource and managed identity were not verified. Task-owned containers and networks were removed after the probe.
+
+Polling Blob trigger is chosen here; Event Grid is not silently assumed configured. Actual hosting-plan compatibility, managed identity, retries/poison behavior and successful private output still require verification in the deployed Azure environment before G9 completion.
 
 ## Evidence needed
 
