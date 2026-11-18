@@ -7,8 +7,8 @@ export const FEATURES = [
     id: 'auth-session',
     area: 'Đăng ký, đăng nhập, phiên, gateway tài khoản',
     routes: ['POST /api/auth/register', 'POST /api/auth/login', 'POST /api/auth/logout', 'GET /api/me', 'POST /internal/introspect'],
-    unit: ['server/tests/account.test.js', 'server/tests/account-gateway.test.js', 'server/tests/service-auth.test.js', 'server/tests/web-accounts.test.js'],
-    integration: ['server/tests/integration/account.test.js'],
+    unit: ['server/tests/account.test.js', 'server/tests/account-gateway.test.js', 'server/tests/client-identity.test.js', 'server/tests/service-auth.test.js', 'server/tests/web-accounts.test.js'],
+    integration: ['server/tests/integration/account.test.js', 'server/tests/integration/auth-proxy.test.js'],
     browser: [
       { mode: 'default', flow: 'register, login, logout (farmer)' },
       { mode: 'operations', flow: 'login as each role via form' },
@@ -90,12 +90,12 @@ export const FEATURES = [
     id: 'readiness',
     area: 'Xác nhận sẵn sàng khi đặt dịch vụ',
     routes: ['POST /api/bookings/:id/readiness', 'GET /api/bookings/:id/readiness'],
-    unit: [],
+    unit: ['server/tests/shifts.test.js'],
     integration: ['server/tests/integration/shifts.test.js', 'server/tests/integration/acceptance.test.js'],
     browser: [
       { mode: 'default', flow: 'farmer confirms readiness drained/mature/intake; frozen after completion' },
     ],
-    gaps: { unit: 'covered through shifts and acceptance integration; no dedicated unit file' },
+
   },
   {
     id: 'acceptance-settlement',
