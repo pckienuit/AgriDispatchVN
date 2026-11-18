@@ -190,6 +190,13 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   const resolution = await post(booking.url, `/api/disputes/${disputeId}/proposals/1/consent`, {}, provider.token);
   assert.equal(resolution.status, 200);
   assert.equal((await resolution.json()).dispute.status, 'RESOLVED');
+  const activity = await readAs('/api/activity?limit=100', session.token);
+  assert.equal(activity.status, 200);
+  const feed = (await activity.json()).items;
+  assert.ok(feed.some(item=>item.type==='booking.BOOKING_REQUESTED' && item.href===`#booking/${original.booking.id}`));
+  assert.ok(feed.some(item=>item.type==='remedy.RESOLVED' && item.href===`#dispute/${disputeId}`));
+  assert.deepEqual((await (await readAs('/api/activity', second.token)).json()).items, []);
+  assert.equal((await fetch(booking.url+'/api/activity')).status, 401);
   assert.ok(!(await (await readAs('/api/dispute-review', mediator.token)).json()).items.some(item=>item.id===disputeId));
   assert.equal((await post(booking.url, `/api/packages/${packageId}/cancel`, { reason: 'Cannot erase work' }, coopSession.token)).status, 409);
   assert.equal((await pool.query('SELECT count(*)::int n FROM dispatch.allocations WHERE package_id=$1 AND released_at IS NULL', [packageId])).rows[0].n, 2);

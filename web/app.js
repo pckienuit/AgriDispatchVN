@@ -8,6 +8,7 @@ import { operationsRoute, renderOperations } from './operations.js';
 import { dispatchRoute, renderDispatch } from './dispatch.js';
 import { settlementRoute, renderSettlement } from './settlement.js';
 import { disputesRoute, renderDisputes } from './disputes.js';
+import { renderActivity } from './activity.js';
 
 const API_TIMEOUT_MS = 10000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -937,6 +938,7 @@ if (isBrowser) {
   function render() {
     const route = parseRoute(location.hash);
     setSessionUi();
+    if (location.hash === '#activity') return renderActivity({ main, api, session, signIn:requireSignIn });
     const recruitment = recruitmentRoute(location.hash);
     if (recruitment) return renderRecruitment({ main, api, session, announce, route: recruitment, signIn: requireSignIn });
     const operations = operationsRoute(location.hash);

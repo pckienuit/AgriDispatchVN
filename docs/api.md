@@ -73,6 +73,12 @@ UI `#settlement/:id` is linked from owner booking and claimed package members. B
 
 ## Observability and configuration
 
+### In-app activity
+
+`GET /api/activity?limit=20&offset=0` returns bounded `{items:[{id,type,createdAt,href,text}],limit,offset}` from persisted booking/recruitment/shift/dispute/remedy events. Booking events stay owner-only; job provider sees its applicants and offers, operator sees its own applications/offers; shift parties see assigned work; dispute/remedy items stay with actual parties and assigned mediator. An unassigned admin's triage access does not add private cases to its personal feed. Fixed labels omit private event bodies, contacts and names. Unknown future event types get an explicit generic detail link, not an invented outcome.
+
+UI `#activity` includes loading/empty/error/retry and paging; links open the actual detail route. Feed has no delivery channel, unread count or read receipt. Acceptance/payment summaries remain in their existing detail views, not in this feed. Offset paging can shift when new events arrive; it is not a snapshot or guaranteed real-time notification delivery.
+
 ### Shift UI and read contract (G10b)
 
 - Booking-owner UI shows latest readiness on `#booking/:id`. `GET /api/bookings/:id/readiness` is farmer-owner scoped and returns `{canConfirm,readiness}`; `readiness` is null before the first confirmation, otherwise includes `bookingId,drained,mature,intakeReady,confirmedAt`. Unrelated owner gets 404; non-farmer gets 403. Read permission does not grant mutation authority: POST rechecks package state and shift under lock. After shift start, UI remains read-only with recorded values. These flags are owner reports, not technical certification.

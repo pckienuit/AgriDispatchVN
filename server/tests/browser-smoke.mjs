@@ -275,6 +275,19 @@ try {
     await route(settlementHash,"document.querySelector('main').innerText.includes('nghĩa vụ đang tranh chấp')");
     assert.equal(await evaluate("document.querySelectorAll('main form').length"),0);
     await shot('dispute-mobile-unresolved-freeze');
+    await route('#activity',"!!document.querySelector('.timeline a')");
+    assert.ok(await evaluate("document.querySelector('main').innerText.includes('Tranh chấp đã đóng, chưa đạt thỏa thuận')"));
+    assert.ok(await evaluate('document.documentElement.scrollWidth<=document.documentElement.clientWidth'));
+    await shot('activity-mobile-provider');
+    await click('.timeline a');
+    await wait("location.hash.startsWith('#dispute/') && document.querySelector('main').innerText.includes('Đóng chưa giải quyết')");
+    await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+    await route('#activity',"!!document.querySelector('.timeline a')");
+    await shot('activity-desktop-provider');
+    assert.equal(await evaluate("[...document.querySelectorAll('main button')].filter(b=>['Trang trước','Trang sau','Tải lại'].includes(b.textContent)).length"),3);
+    await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});
+    await evaluate('window.scrollTo(0,document.documentElement.scrollHeight)');
+    await shot('activity-mobile-pagination');
     assert.deepEqual(errors,[]);
     console.log('OPERATIONS_BROWSER_PASS: real gateway assigned operator start/pause/resume/complete, area rejection and provider read-only; desktop/mobile.');
   } else if (process.argv.includes('--recruitment')) {
