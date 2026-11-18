@@ -1,11 +1,12 @@
 import { createApp } from './app.js';
 import { readConfig } from './config.js';
 import { createPool } from './db.js';
+import { configuredBlobStore } from './blob-store.js';
 
 try {
   const config = readConfig();
   const pool = createPool(config.databaseUrl);
-  const server = createApp({ pool, accountServiceUrl: process.env.ACCOUNT_SERVICE_URL, internalServiceToken: process.env.INTERNAL_SERVICE_TOKEN, buildSha:process.env.BUILD_SHA ?? 'development' }).listen(config.port, '0.0.0.0');
+  const server = createApp({ pool, accountServiceUrl: process.env.ACCOUNT_SERVICE_URL, internalServiceToken: process.env.INTERNAL_SERVICE_TOKEN, buildSha:process.env.BUILD_SHA ?? 'development', evidenceStore:configuredBlobStore(process.env) }).listen(config.port, '0.0.0.0');
   server.once('listening', () => {
     console.log(`Listening on port ${config.port}`);
   });

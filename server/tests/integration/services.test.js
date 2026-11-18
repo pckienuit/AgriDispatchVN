@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import {Buffer} from 'node:buffer';
+import {crc32} from 'node:zlib';
 import { once } from 'node:events';
 import { test } from 'node:test';
+import express from 'express';
+import {createBlobStore} from '../../src/blob-store.js';
 import { createAccountApp } from '../../src/account-app.js';
 import { createApp } from '../../src/app.js';
 import { createPool } from '../../src/db.js';
@@ -33,7 +37,30 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
     return { server, url: `http://127.0.0.1:${server.address().port}` };
   };
   const account = await listen(createAccountApp({ pool, internalServiceToken: secret }));
-  const booking = await listen(createApp({ pool, accountServiceUrl: account.url, internalServiceToken: secret }));
+  const objects=new Map();
+  let failStorage=false;
+  let holdUpload=null;
+  // Explicit local Blob protocol stub, not Azure. Real REST client is exercised through HTTP.
+  const blobApp=express();blobApp.use(express.raw({type:()=>true,limit:'6mb'}));
+  blobApp.use(async(req,res)=>{
+    assert.equal(req.get('Authorization'),'Bearer synthetic-storage-test-token');
+    const key=req.path.replace(/^\/evidence\//,'');
+    if(req.method==='PUT'){
+      if(failStorage)return res.sendStatus(503);
+      if(objects.has(key))return res.sendStatus(412);
+      assert.equal(req.get('If-None-Match'),'*');
+      objects.set(key,{bytes:req.body,contentType:req.get('Content-Type'),etag:'"synthetic"'});
+      if(holdUpload)await holdUpload();
+      return res.status(201).set('ETag','"synthetic"').end();
+    }
+    if(req.method==='DELETE'){objects.delete(key);return res.status(202).end();}
+    const object=objects.get(key);
+    if(!object)return res.status(404).end();
+    res.set({'Content-Type':object.contentType,ETag:object.etag}).send(object.bytes);
+  });
+  const blob=await listen(blobApp);
+  const evidenceStore=createBlobStore({accountUrl:blob.url,allowLoopback:true,getToken:async()=>'synthetic-storage-test-token'});
+  const booking = await listen(createApp({ pool, accountServiceUrl: account.url, internalServiceToken: secret, evidenceStore }));
   const post = (url, path, body, token) => fetch(url + path, {
     method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(body),
@@ -213,12 +240,77 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   assert.ok(!(await (await readAs('/api/dispute-review', involvedAuth.token)).json()).items.some(item=>item.id===disputeId));
   assert.equal((await readAs(`/api/disputes/${disputeId}`, involvedAuth.token)).status, 404);
   assert.equal((await readAs(`/api/dispute-review/${disputeId}/mediators`, involvedAuth.token)).status, 404);
+  const evidencePath=`/api/disputes/${disputeId}/evidence`;
+  // Synthetic 1x1 RGBA PNG, generated with zlib and checked chunk CRCs.
+  const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==','base64');
+  const taggedImage=text=>{
+    const payload=Buffer.from('tEXt'+'Synthetic\0'+text),chunk=Buffer.alloc(payload.length+8);
+    chunk.writeUInt32BE(payload.length-4);payload.copy(chunk,4);chunk.writeUInt32BE(crc32(payload),payload.length+4);
+    return Buffer.concat([image.subarray(0,-12),chunk,image.subarray(-12)]);
+  };
+  const upload=(token,bytes=image,type='image/png')=>fetch(booking.url+evidencePath,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':type},body:bytes});
+  assert.equal((await upload(second.token)).status,404);
+  assert.equal((await readAs(evidencePath,mediator.token)).status,404);
+  const uploaded=await upload(session.token);assert.equal(uploaded.status,201);
+  const evidence=(await uploaded.json()).evidence;
+  assert.equal(evidence.status,'UPLOADED');assert.equal(evidence.byteSize,image.length);
+  assert.ok(!JSON.stringify(evidence).includes('objectKey'));
+  assert.equal(objects.size,1);
+  const replay=await upload(session.token);assert.equal(replay.status,200);assert.equal((await replay.json()).evidence.id,evidence.id);
+  assert.equal(objects.size,1);
+  failStorage=true;
+  const failedUpload=await upload(provider.token);assert.equal(failedUpload.status,503);assert.equal((await failedUpload.json()).error.code,'STORAGE_UNAVAILABLE');
+  failStorage=false;
+  assert.equal((await pool.query("SELECT count(*)::int n FROM dispatch.evidence WHERE dispute_id=$1 AND status='FAILED'",[disputeId])).rows[0].n,1);
+  const retryUpload=await upload(provider.token);assert.equal(retryUpload.status,201);
+  const retryEvidence=(await retryUpload.json()).evidence;
+  await assert.rejects(pool.query("UPDATE dispatch.evidence SET object_key='forged' WHERE id=$1",[evidence.id]),e=>e.code==='23001');
+  await assert.rejects(pool.query('DELETE FROM dispatch.evidence WHERE id=$1',[evidence.id]),e=>e.code==='23001');
+  assert.deepEqual((await (await readAs(evidencePath,provider.token)).json()).items.map(e=>e.id).sort(),[evidence.id,retryEvidence.id].sort());
+  assert.equal((await readAs(evidencePath+'?limit=101',provider.token)).status,400);
+  assert.equal((await upload(session.token,Buffer.alloc(5242881),'image/png')).status,413);
+  assert.equal((await upload(session.token,Buffer.from('<html>'),'image/png')).status,400);
+  assert.equal((await upload(session.token,image,'image/svg+xml')).status,415);
+  assert.equal((await readAs(`/api/evidence/${evidence.id}/content`,second.token)).status,404);
+  const originalImage=await readAs(`/api/evidence/${evidence.id}/content`,provider.token);
+  assert.equal(originalImage.status,200);assert.deepEqual(Buffer.from(await originalImage.arrayBuffer()),image);
+  const key=[...objects.keys()].find(key=>key.includes(evidence.id)),saved=objects.get(key);
+  objects.set(key,{...saved,bytes:Buffer.from('Synthetic corrupt object')});
+  assert.equal((await readAs(`/api/evidence/${evidence.id}/content`,provider.token)).status,503);
+  objects.set(key,saved);
+  const thumbnail=await readAs(`/api/evidence/${evidence.id}/thumbnail`,provider.token);
+  assert.equal(thumbnail.status,404);assert.equal((await thumbnail.json()).error.code,'THUMBNAIL_PENDING');
   assert.equal((await post(booking.url, `/api/disputes/${disputeId}/mediator`, { mediatorId: mediator.id }, mediator.token)).status, 200);
+  assert.equal((await readAs(`/api/evidence/${evidence.id}/content`,mediator.token)).status,200);
+  assert.equal((await upload(mediator.token)).status,403);
+  const noStorage=await listen(createApp({pool,accountServiceUrl:account.url,internalServiceToken:secret}));
+  const unavailable=await fetch(noStorage.url+evidencePath,{method:'POST',headers:{Authorization:'Bearer '+session.token,'Content-Type':'image/png'},body:image});
+  assert.equal(unavailable.status,503);assert.equal((await unavailable.json()).error.code,'STORAGE_UNAVAILABLE');
   assert.equal((await post(booking.url, `/api/disputes/${disputeId}/proposals`, { text: 'Synthetic mutually accepted remedy, no money executed' }, mediator.token)).status, 201);
   assert.equal((await post(booking.url, `/api/disputes/${disputeId}/proposals/1/consent`, {}, session.token)).status, 200);
+  let releaseUpload,enteredUpload;
+  const entered=new Promise(resolve=>{enteredUpload=resolve;});
+  const held=new Promise(resolve=>{releaseUpload=resolve;});
+  holdUpload=()=>{enteredUpload();return held;};
+  const closingUpload=upload(session.token,taggedImage('case-close-race'));
+  await entered;
   const resolution = await post(booking.url, `/api/disputes/${disputeId}/proposals/1/consent`, {}, provider.token);
+  releaseUpload();holdUpload=null;
   assert.equal(resolution.status, 200);
   assert.equal((await resolution.json()).dispute.status, 'RESOLVED');
+  assert.equal((await closingUpload).status,409);
+  assert.equal(objects.size,2);
+  assert.equal((await upload(session.token)).status,409);
+  assert.equal((await readAs(`/api/evidence/${evidence.id}/content`,session.token)).status,200);
+  const capCase=await post(booking.url,`/api/bookings/${original.booking.id}/disputes`,{reason:'OTHER',details:'Synthetic storage concurrency cap'},session.token);
+  assert.equal(capCase.status,201);const capId=(await capCase.json()).dispute.id;
+  const capUpload=n=>fetch(booking.url+`/api/disputes/${capId}/evidence`,{method:'POST',headers:{Authorization:'Bearer '+session.token,'Content-Type':'image/png'},body:taggedImage('cap-'+n)});
+  const filled=await Promise.all(Array.from({length:9},(_,n)=>capUpload(n)));
+  assert.ok(filled.every(r=>r.status===201));
+  const capRace=await Promise.all([capUpload(9),capUpload(10)]);
+  assert.deepEqual(capRace.map(r=>r.status).sort(),[201,409]);
+  assert.equal((await capRace.find(r=>r.status===409).json()).error.code,'EVIDENCE_LIMIT');
+  assert.equal((await pool.query("SELECT count(*)::int n FROM dispatch.evidence WHERE dispute_id=$1 AND status='UPLOADED'",[capId])).rows[0].n,10);
   const activity = await readAs('/api/activity?limit=100', session.token);
   assert.equal(activity.status, 200);
   const feed = (await activity.json()).items;

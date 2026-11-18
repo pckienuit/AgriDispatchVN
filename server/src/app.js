@@ -14,8 +14,9 @@ import { createRemedyRouter } from './remedies.js';
 import { createActivityRouter } from './activity.js';
 import { createRequestContext } from './observability.js';
 import { createPostponementRouter } from './postponement.js';
+import { createEvidenceRouter } from './evidence.js';
 
-export function createApp({ pool, accountServiceUrl, internalServiceToken, buildSha = 'development', log }) {
+export function createApp({ pool, accountServiceUrl, internalServiceToken, buildSha = 'development', log, evidenceStore = null }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(createRequestContext({serviceName:'booking-service',buildSha,log}));
@@ -48,6 +49,7 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken, build
     app.use(createRemedyRouter({ pool, authenticate }));
     app.use(createActivityRouter({ pool, authenticate }));
     app.use(createPostponementRouter({ pool, authenticate }));
+    app.use(createEvidenceRouter({ pool, authenticate, store:evidenceStore }));
   }
   app.use(express.static(fileURLToPath(new URL('../../web/', import.meta.url)), { dotfiles: 'deny' }));
   app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND' } }));
