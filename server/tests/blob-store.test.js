@@ -394,3 +394,11 @@ test('storage configuration is absent or complete, never a silent local fallback
   const store=configuredBlobStore({EVIDENCE_BLOB_ACCOUNT_URL:'https://acct1.blob.core.windows.net',IDENTITY_ENDPOINT:'http://127.0.0.1:1234/token',IDENTITY_HEADER:'synthetic'});
   assert.equal(typeof store.put,'function');
 });
+
+test('thumbnail writes are create-only to separate output container and replay safely',async t=>{
+ let status=201;
+ const {url,seen}=await stub(t,(_req,res)=>res.writeHead(status,{ETag:ETAG}).end());
+ const s=store(url);assert.deepEqual(await s.putThumbnail(KEY,JPEG),{created:true});
+ status=412;assert.deepEqual(await s.putThumbnail(KEY,JPEG),{created:false});
+ assert.equal(seen[0].path,`/thumbnails/${KEY}.jpg`);assert.equal(seen[0].headers['if-none-match'],'*');
+});

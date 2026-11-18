@@ -232,7 +232,20 @@ export function createBlobStore({
     });
   }
 
-  return { put, get, remove };
+  async function putThumbnail(key,bytes) {
+    checkKey(key);
+    if(!Buffer.isBuffer(bytes)||bytes.length<3||bytes.length>MAX_BLOB_BYTES||bytes[0]!==0xff||bytes[1]!==0xd8)throw invalid('Invalid thumbnail bytes');
+    return call(async signal=>{
+      const response=await fetch(blobUrl(origin,thumbnailContainer,`${key}.jpg`),{method:'PUT',
+        headers:headers(await authorization(signal),{'x-ms-blob-type':'BlockBlob','If-None-Match':'*','Content-Type':'image/jpeg'}),
+        body:bytes,signal,redirect:'error'});
+      await discard(response);
+      if(response.status===412)return {created:false};
+      if(response.status!==201)throw new Error('Unexpected thumbnail status');
+      return {created:true};
+    });
+  }
+  return { put, get, remove, putThumbnail };
 }
 
 export function createManagedIdentityTokenProvider({ endpoint, identityHeader, timeoutMs = DEFAULT_TIMEOUT_MS }) {

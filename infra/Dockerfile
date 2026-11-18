@@ -1,7 +1,7 @@
 FROM node:26-alpine AS dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev --omit=optional && npm cache clean --force
 
 FROM node:26-alpine AS test
 WORKDIR /app
@@ -11,6 +11,7 @@ COPY eslint.config.js ./
 COPY server ./server
 COPY db ./db
 COPY web ./web
+COPY functions ./functions
 CMD ["sh", "-c", "npm run lint && npm test && npm run test:integration"]
 
 FROM node:26-alpine AS runtime

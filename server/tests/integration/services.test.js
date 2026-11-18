@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { test } from 'node:test';
 import express from 'express';
 import {createBlobStore} from '../../src/blob-store.js';
+import processor from '../../../functions/thumbnail/processor.cjs';
 import { createAccountApp } from '../../src/account-app.js';
 import { createApp } from '../../src/app.js';
 import { createPool } from '../../src/db.js';
@@ -44,7 +45,7 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   const blobApp=express();blobApp.use(express.raw({type:()=>true,limit:'6mb'}));
   blobApp.use(async(req,res)=>{
     assert.equal(req.get('Authorization'),'Bearer synthetic-storage-test-token');
-    const key=req.path.replace(/^\/evidence\//,'');
+    const key=req.path.replace(/^\/(?:evidence\/)?/,'');
     if(req.method==='PUT'){
       if(failStorage)return res.sendStatus(503);
       if(objects.has(key))return res.sendStatus(412);
@@ -280,6 +281,13 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   objects.set(key,saved);
   const thumbnail=await readAs(`/api/evidence/${evidence.id}/thumbnail`,provider.token);
   assert.equal(thumbnail.status,404);assert.equal((await thumbnail.json()).error.code,'THUMBNAIL_PENDING');
+  const generated=await processor.makeThumbnail(image,key);
+  assert.deepEqual(await evidenceStore.putThumbnail(key,generated.bytes),{created:true});
+  assert.deepEqual(await evidenceStore.putThumbnail(key,generated.bytes),{created:false});
+
+  const readyThumbnail=await readAs(`/api/evidence/${evidence.id}/thumbnail`,provider.token);
+  assert.equal(readyThumbnail.status,200);assert.equal(readyThumbnail.headers.get('content-type'),'image/jpeg');
+  assert.deepEqual(Buffer.from(await readyThumbnail.arrayBuffer()),generated.bytes);
   assert.equal((await post(booking.url, `/api/disputes/${disputeId}/mediator`, { mediatorId: mediator.id }, mediator.token)).status, 200);
   assert.equal((await readAs(`/api/evidence/${evidence.id}/content`,mediator.token)).status,200);
   assert.equal((await upload(mediator.token)).status,403);
@@ -299,7 +307,7 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   assert.equal(resolution.status, 200);
   assert.equal((await resolution.json()).dispute.status, 'RESOLVED');
   assert.equal((await closingUpload).status,409);
-  assert.equal(objects.size,2);
+  assert.equal(objects.size,3);
   assert.equal((await upload(session.token)).status,409);
   assert.equal((await readAs(`/api/evidence/${evidence.id}/content`,session.token)).status,200);
   const capCase=await post(booking.url,`/api/bookings/${original.booking.id}/disputes`,{reason:'OTHER',details:'Synthetic storage concurrency cap'},session.token);
