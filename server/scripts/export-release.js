@@ -13,10 +13,10 @@ import { parseArgs, promisify } from 'node:util';
 const run = promisify(execFile);
 const MAX_BUFFER = 512 * 1024 * 1024;
 const SHA = /^[0-9a-f]{40}$/;
-const ALLOW_FILES = new Set(['.dockerignore', '.editorconfig', '.gitignore', '.env.example', '.nvmrc', 'README.md', 'eslint.config.js', 'package-lock.json', 'package.json']);
+const ALLOW_FILES = new Set(['.dockerignore', '.editorconfig', '.gitignore', '.env.example', '.nvmrc', 'README.md', 'eslint.config.js', 'package-lock.json', 'package.json', 'Jenkinsfile', 'azure-pipelines.yml']);
 const ALLOW_PREFIXES = ['server/', 'db/', 'web/', 'infra/', 'functions/', '.github/workflows/'];
 // docs/cloud-stages.md is internal planning and approval text: deliberately not allowlisted.
-const ALLOW_DOCS = new Set(['api', 'architecture', 'development', 'cloud', 'synthetic-data', 'benchmark', 'benchmark-bookings', 'evidence-recovery', 'release-export'].map((n) => `docs/${n}.md`));
+const ALLOW_DOCS = new Set(['api', 'architecture', 'development', 'cloud', 'synthetic-data', 'benchmark', 'benchmark-bookings', 'evidence-recovery', 'release-export', 'testing', 'terraform', 'cloud-deploy', 'pipelines', 'database-deploy'].map((n) => `docs/${n}.md`));
 const SECRET_NAME = /(^|\/)(\.env(\..+)?|\.npmrc|\.netrc|\.htpasswd|credentials(\.json)?|id_(rsa|ecdsa|ed25519)|auth\.json)$|\.(pem|key|p12|pfx)$|(^|\/)(private|node_modules)\//;
 const ENV_EXAMPLE = /(^|\/)\.env\.example$/;
 const DEPLOY_SECRET = /(^|\/)(\.terraform\/|kubeconfig[^/]*$|[^/]*-kubeconfig$)|\.(tfstate(\..*)?|tfplan|tfvars(\.json)?)$/;

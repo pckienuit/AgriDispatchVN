@@ -31,6 +31,8 @@ node server/scripts/export-release.js --output /abs/dir/release.tar.gz --sha HEA
 
 Loại có lý do (ghi trong `excluded` của manifest): `AGENTS.md` và tài liệu nội bộ, `docs/cloud-stages.md` (kế hoạch và phê duyệt nội bộ), và mọi đường dẫn ngoài allowlist. Liên kết từ README đến hai tài liệu bị loại không có đích trong gói; dùng runbook được đưa vào để chạy nguồn. Không sửa byte nguồn khi xuất để giữ đúng provenance của commit.
 
+Allowlist cũng nhận `Jenkinsfile`, `azure-pipelines.yml` và các runbook `testing.md`, `terraform.md`, `cloud-deploy.md`, `pipelines.md`, `database-deploy.md` trong `docs/` khi đã được commit. Đường dẫn được phép không chứng minh phần đó đã triển khai hoặc kiểm thử thành công.
+
 ## Manifest
 
 `release.manifest.json` gồm:

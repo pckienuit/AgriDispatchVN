@@ -35,12 +35,19 @@ const BASE_FILES = {
   'web/index.html': '<!doctype html>\n',
   'functions/thumbnail/index.cjs': 'module.exports = {};\n',
   'infra/Dockerfile': 'FROM node:26\n',
+  'Jenkinsfile': 'pipeline { agent any }\n',
+  'azure-pipelines.yml': 'trigger: none\n',
+  'docs/testing.md': '# test matrix\n',
+  'docs/terraform.md': '# Terraform\n',
+  'docs/cloud-deploy.md': '# Deploy\n',
+  'docs/pipelines.md': '# Pipelines\n',
+  'docs/database-deploy.md': '# Runtime roles\n',
   '.env.example': 'PORT=3000\nPOSTGRES_PASSWORD=local_dev_only\n',
   'scratch/notes.txt': 'not for release\n',
 };
 const EXPECTED_FILES = [
   '.env.example', '.gitignore', '.nvmrc', 'README.md', 'docs/cloud.md', 'docs/evidence-recovery.md', 'docs/release-export.md', 'functions/thumbnail/index.cjs',
-  'infra/Dockerfile', 'package-lock.json', 'package.json', 'server/src/app.js', 'web/index.html',
+  'infra/Dockerfile', 'Jenkinsfile', 'azure-pipelines.yml', 'docs/testing.md', 'docs/terraform.md', 'docs/cloud-deploy.md', 'docs/pipelines.md', 'docs/database-deploy.md', 'package-lock.json', 'package.json', 'server/src/app.js', 'web/index.html',
 ].sort();
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
