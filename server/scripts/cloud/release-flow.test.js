@@ -25,3 +25,11 @@ test('revision verification checks actual digest, observed generation and availa
  await assert.rejects(verifyRelease(release,{run,probe}),/revision mismatch/);
  await assert.rejects(verifyRelease(release,{run,probe:async()=>({ok:false})}),/readiness/);
 });
+
+test('revision verification rejects missing or invalid rollout counts rather than comparing undefined fields',async()=>{
+ for(const [replicas,generation] of [[undefined,2],[0,2],[-1,2],[1.5,2],['2',2],[2,undefined],[2,0],[2,-1],[2,1.5],[2,'2']]){
+  const deployment={metadata:{generation},spec:{replicas,template:{spec:{containers:[{name:'account',image:release.images.app,env:[{name:'BUILD_SHA',value:sha}]}]}}},status:{observedGeneration:generation,updatedReplicas:replicas,availableReplicas:replicas}};
+  const run=async argv=>({code:0,stdout:argv[0]==='kubectl'?JSON.stringify(deployment):`DOCKER|${argv[1]==='webapp'?release.images.app:release.images.function}`});
+  await assert.rejects(verifyRelease(release,{run,probe:async()=>({ok:true})}),/revision mismatch/,`replicas=${replicas}`);
+ }
+});

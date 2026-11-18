@@ -12,7 +12,9 @@ export async function verifyRelease(release, { run = runCommand, probe = probeOn
   if (webFx !== `DOCKER|${release.images.app}`) throw new Error('Web App image revision mismatch');
   const deployment = parseJsonOutput(requireOk(await run(['kubectl', '--kubeconfig', t.kubeconfig, '--context', t.context, '-n', 'agridispatch', 'get', 'deployment/account', '-o', 'json']), 'account revision'), 'account revision');
   const container = deployment.spec?.template?.spec?.containers?.find(c => c.name === 'account');
-  if (container?.image !== release.images.app || container.env?.find(e => e.name === 'BUILD_SHA')?.value !== release.sha || deployment.status?.observedGeneration !== deployment.metadata?.generation || deployment.status?.updatedReplicas !== deployment.spec?.replicas || deployment.status?.availableReplicas !== deployment.spec?.replicas) throw new Error('Account deployed revision mismatch');
+  const replicas = deployment.spec?.replicas;
+  const generation = deployment.metadata?.generation;
+  if (!Number.isSafeInteger(replicas) || replicas < 1 || !Number.isSafeInteger(generation) || generation < 1 || container?.image !== release.images.app || container.env?.find(e => e.name === 'BUILD_SHA')?.value !== release.sha || deployment.status?.observedGeneration !== generation || deployment.status?.updatedReplicas !== replicas || deployment.status?.availableReplicas !== replicas) throw new Error('Account deployed revision mismatch');
   const functionFx = requireOk(await run(['az', 'functionapp', 'config', 'show', ...common, '--name', t.functionApp, '--query', 'linuxFxVersion', '-o', 'tsv']), 'Function revision').trim();
   if (functionFx !== `DOCKER|${release.images.function}`) throw new Error('Function image revision mismatch');
   return { status: 'REVISION_CHECKS_PASSED', sha: release.sha, actualBlobInvocationVerified: false, crossServiceCloudWorkflowVerified: false, acceptanceComplete: false };
