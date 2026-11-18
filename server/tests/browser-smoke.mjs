@@ -435,8 +435,13 @@ try {
   await click('a[href^="#request/"]'); await wait("!!document.querySelector('#booking-start')");
   await click('form button[type=submit]');
   assert.equal(await evaluate('document.activeElement.id'), 'booking-field');
-  await evaluate("(()=>{const e=document.querySelector('#booking-field');e.selectedIndex=1;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()");
+  const validationNotice = 'Kiểm tra lại các trường được đánh dấu.';
+  assert.equal(await evaluate("document.querySelector('#status').textContent"), validationNotice);
+  await evaluate("(()=>{const e=document.querySelector('#booking-field');e.selectedIndex=1;e.dispatchEvent(new Event('change',{bubbles:true}));})()");
+  assert.equal(await evaluate("document.querySelector('#booking-field').hasAttribute('aria-invalid')"),false, 'Selecting a field clears its marker on change');
+  assert.equal(await evaluate("document.querySelector('#status').textContent"), validationNotice, 'Keep the notice while other fields are marked');
   await fill('#booking-start', '2026-12-01T08:00'); await fill('#booking-end', '2026-12-01T12:00');
+  assert.equal(await evaluate("document.querySelector('#status').textContent"), '', 'Clear the notice once the last field marker is removed');
   assert.equal(await evaluate("document.querySelector('#booking-field').hasAttribute('aria-invalid')"),false);
   assert.equal(await evaluate("document.querySelector('#booking-field').parentElement.querySelector('.field-error')!==null"),false);
   await shot('desktop-request');

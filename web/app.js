@@ -355,8 +355,15 @@ if (isBrowser) {
     return node;
   }
 
+  let validationForm = null;
   function announce(text) {
+    validationForm = null;
     status.textContent = text;
+  }
+
+  function announceValidation(form) {
+    announce('Kiểm tra lại các trường được đánh dấu.');
+    validationForm = form;
   }
 
   function setSessionUi() {
@@ -552,7 +559,7 @@ if (isBrowser) {
     slot.replaceChildren();
     if (first) {
       first.focus();
-      announce('Kiểm tra lại các trường được đánh dấu.');
+      announceValidation(form);
     }
   }
 
@@ -690,7 +697,7 @@ if (isBrowser) {
     slot.replaceChildren();
     if (first) {
       first.focus();
-      announce('Kiểm tra lại các trường được đánh dấu.');
+      announceValidation(form);
     }
   }
 
@@ -966,7 +973,7 @@ if (isBrowser) {
     slot.replaceChildren();
     if (first) {
       first.focus();
-      announce('Kiểm tra lại các trường được đánh dấu.');
+      announceValidation(form);
     }
   }
 
@@ -989,6 +996,7 @@ if (isBrowser) {
   }
 
   function render() {
+    if (validationForm) announce('');
     const route = parseRoute(location.hash);
     setSessionUi();
     if (location.hash === '#activity') return renderActivity({ main, api, session, signIn:requireSignIn });
@@ -1017,13 +1025,16 @@ if (isBrowser) {
     return renderNotFound();
   }
 
-  main.addEventListener('input', (event) => {
+  function clearEditedFieldError(event) {
     const input = event.target;
     if (input.matches('input, select')) {
       input.removeAttribute('aria-invalid');
       if (input.nextElementSibling?.classList.contains('field-error')) input.nextElementSibling.remove();
+      if (validationForm && input.form === validationForm && !validationForm.querySelector('[aria-invalid="true"]')) announce('');
     }
-  });
+  }
+  main.addEventListener('input', clearEditedFieldError);
+  main.addEventListener('change', clearEditedFieldError);
   doc.querySelector('.skip-link').addEventListener('click', (event) => {
     event.preventDefault();
     main.focus();
