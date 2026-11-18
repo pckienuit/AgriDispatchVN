@@ -54,6 +54,8 @@ Each write is permission-checked, transactional and audited. Exact endpoint payl
 
 `GET /api/bookings/:id/acceptance` now also returns `permissions: {party,canPropose,blockedByDispute}`. `party` is `owner`, `provider` or null for a coordinating coop read. `canPropose` needs an independent assigned provider, completed shift, no current agreement and no blocking dispute. These read hints can become stale; every write still rechecks its existing transaction/ownership rules. A role label alone does not permit signing for another party.
 
+UI `#settlement/:id` is linked from owner booking and claimed package members. Both parties consent separately to the displayed immutable version; proposal creation never auto-consents. Owner reports an external transfer using a reference; only provider acknowledgment reduces the unconfirmed balance. Unknown report outcome retains actor/booking-scoped payload in page memory, freezes editing and supports same-reference retry even when the server now reports no additional capacity. Page reload loses this memory: inspect records before creating a new report. No funds move and no bank verification occurs.
+
 ### Dispatch read contract
 
 - UI routes `#dispatch` and `#package/:id` support coop grouping and provider machine registration/claim/cancellation. Owner delegates from `#booking/:id`; UI picks live coop names rather than entering account IDs. `GET /api/coordinators` is authenticated farmer/coop, bounded list of `{id,name}` only; names are role-directory entries, not proof of external certification. `GET /api/bookings/:id/coordinator` is owner-only and returns `{coordinatorId,canAssign}`. POST remains authoritative and refuses changing delegation after grouping.

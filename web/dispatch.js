@@ -373,6 +373,7 @@ export async function renderDispatch({ main, api, session, announce, route, sign
         el('h2', { text: STATUS_LABELS[pkg.status] ?? pkg.status }),
         el('p', { text: `${pkg.locality}. ${pkg.bookingCount} đơn. ${windowText(pkg.window)}` }),
       ];
+      if (pkg.status === 'CLAIMED') nodes.push(el('section', {}, [el('h2', { text:'Nghiệm thu từng đơn' }), el('ul', {}, pkg.bookingIds.map((id,index) => el('li', {}, [el('a', {href:`#settlement/${id}`,text:`Đơn ${index+1}: nghiệm thu và ghi nhận tiền`})])))]));
       if (options) nodes.push(el('section', {}, [el('h2', { text: 'Nhận gói' }), claimForm(pkg, options)]));
       if (actions.includes('cancel')) nodes.push(el('section', {}, [el('h2', { text: 'Hủy gói' }), cancelForm(pkg)]));
       content.replaceChildren(...nodes);
