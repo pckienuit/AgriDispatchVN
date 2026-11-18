@@ -47,7 +47,7 @@ async function main() {
   const env = ['DATABASE_URL', 'INTERNAL_SERVICE_TOKEN'].map(name => ({ name, valueFrom: { secretKeyRef: { name: 'runtime', key: name } } }));
   const service = (name, port) => resource('Service', name, { selector: { app: name }, ports: [{ port, targetPort: port }] });
   const deploy = (name, container) => resource('Deployment', name, { replicas: 1, selector: { matchLabels: { app: name } }, template: { metadata: { labels: { app: name } }, spec: { containers: [container] } } });
-  const app = (name, port, entry) => deploy(name, { name, image: values.image, imagePullPolicy: 'Never', command: ['node', entry], env: [...env, { name: 'PORT', value: String(port) }, { name: 'BUILD_SHA', value: values.sha }, ...(name === 'booking' ? [{ name: 'ACCOUNT_SERVICE_URL', value: 'http://account:3001' }] : [])],
+  const app = (name, port, entry) => deploy(name, { name, image: values.image, imagePullPolicy: 'Never', command: ['node', entry], env: [...env, { name: 'PORT', value: String(port) }, { name: 'BUILD_SHA', value: values.sha }, ...(name === 'booking' ? [{ name: 'ACCOUNT_SERVICE_URL', value: 'http://account:3001' }] : [{ name: 'REQUIRE_SIGNED_CLIENT_IDENTITY', value: 'true' }])],
     securityContext: { runAsNonRoot: true, runAsUser: 1000, readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } },
     readinessProbe: { httpGet: { path: '/ready', port }, periodSeconds: 2 }, livenessProbe: { httpGet: { path: '/health', port }, initialDelaySeconds: 5, periodSeconds: 5 } });
   let created = false, forward, restartReadRetries = 0;
@@ -73,6 +73,8 @@ async function main() {
     for (const name of ['account', 'booking']) await kubectl(['-n', ns, 'rollout', 'status', 'deployment/' + name, '--timeout=90s']);
     stage = 'cross-service network readiness';
     await kubectl(['-n', ns, 'exec', 'deployment/booking', '--', 'node', '-e', "(async()=>{for(let i=0;i<40;i++){try{const r=await fetch('http://account:3001/ready',{signal:AbortSignal.timeout(1000)});if(r.ok)return;}catch{}await new Promise(r=>setTimeout(r,250));}process.exitCode=1;})()"]);
+    stage = 'unsigned account request rejected';
+    await kubectl(['-n', ns, 'exec', 'deployment/booking', '--', 'node', '-e', "(async()=>{const r=await fetch('http://account:3001/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'synthetic-kind@example.com',password:'unsigned-test-only'}),signal:AbortSignal.timeout(3000)});const b=await r.json();if(r.status!==400||b.error?.code!=='INVALID_CLIENT_IDENTITY')process.exitCode=1;})().catch(()=>{process.exitCode=1;})"]);
     stage = 'port forward';
     const listener = createServer();
     await new Promise(r => listener.listen(0, '127.0.0.1', r));
@@ -112,7 +114,7 @@ async function main() {
         await sleep(500);
       }
     }
-    await writeFile(output, JSON.stringify({ localOnly: true, declaredBuildSha: values.sha, image: values.image, migrationJob: true, nonRootReadOnly: true, crossServiceRegisterLogin: true, fieldAndSessionPersistAfterAccountRollingRestart: true, restartReadRetries, uninterruptedAvailabilityVerified: false, cloudIdentityRbacVnetVerified: false }) + '\n', { flag: 'wx', mode: 0o600 });
+    await writeFile(output, JSON.stringify({ localOnly: true, declaredBuildSha: values.sha, image: values.image, migrationJob: true, nonRootReadOnly: true, unsignedAccountRequestRejected: true, signedGatewayRegisterLogin: true, crossServiceRegisterLogin: true, fieldAndSessionPersistAfterAccountRollingRestart: true, restartReadRetries, uninterruptedAvailabilityVerified: false, cloudIdentityRbacVnetVerified: false }) + '\n', { flag: 'wx', mode: 0o600 });
     console.log('KUBERNETES_SYSTEM_PASS: local runtime only; cloud identity, RBAC and VNet unverified');
   } catch (error) {
     const network = await kubectl(['-n', ns, 'exec', 'deployment/booking', '--', 'node', '-e', "fetch('http://account:3001/health').then(r=>console.log('ACCOUNT_HEALTH',r.status)).catch(e=>console.log('ACCOUNT_NETWORK',e.cause?.code??e.name))"]).catch(() => 'network diagnostic unavailable');
