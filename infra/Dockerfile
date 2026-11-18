@@ -4,6 +4,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --omit=optional && npm cache clean --force
 
 FROM node:26-alpine AS test
+RUN apk add --no-cache git tar
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
