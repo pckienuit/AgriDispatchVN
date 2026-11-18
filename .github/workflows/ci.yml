@@ -36,6 +36,11 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Native YAML test dependency
+        run: |
+          python3 -m venv "$RUNNER_TEMP/agri-yaml"
+          "$RUNNER_TEMP/agri-yaml/bin/python3" -m pip install PyYAML==6.0.3
+          printf '%s\n' "$RUNNER_TEMP/agri-yaml/bin" >> "$GITHUB_PATH"
       - run: npm run lint
       - run: npm test
       - run: npm run test:integration

@@ -4,7 +4,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --omit=optional && npm cache clean --force
 
 FROM node:26-alpine AS test
-RUN apk add --no-cache git tar
+RUN apk add --no-cache git tar python3 py3-yaml
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
@@ -17,6 +17,7 @@ COPY infra ./infra
 COPY docs ./docs
 COPY .gitignore ./
 COPY .dockerignore ./
+COPY Jenkinsfile azure-pipelines.yml ./
 CMD ["sh", "-c", "npm run lint && npm test && npm run test:integration"]
 
 FROM node:26-alpine AS runtime
