@@ -466,6 +466,27 @@ test('dispute rows change only mediator while OPEN; deletes and identity edits a
   await assert.rejects(ctx.pool.query('UPDATE dispatch.disputes SET status=\'CLOSED\' WHERE id=$1', [disputeId]), { code: '23001' });
 });
 
+test('mediator reassignment refuses a forged previous mediator and preserves prior state', async () => {
+  const { bookingId } = await claimed();
+  const disputeId = (await disputes(bookingId, FARMER)).body.dispute.id;
+  assert.equal((await assign(disputeId, ADMIN_MEDIATOR, ADMIN_SEPARATE)).status, 200);
+  const client = await ctx.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('UPDATE dispatch.disputes SET mediator_id=$2 WHERE id=$1', [disputeId, ADMIN_SEPARATE]);
+    await assert.rejects(client.query(
+      "INSERT INTO dispatch.dispute_events(dispute_id,event_type,actor_id,data) VALUES($1,'MEDIATOR_ASSIGNED',$2,$3::jsonb)",
+      [disputeId, ADMIN_SEPARATE, JSON.stringify({ mediatorId: ADMIN_SEPARATE, previousMediatorId: null })],
+    ), { code: '23001' });
+  } finally {
+    await client.query('ROLLBACK');
+    client.release();
+  }
+  assert.equal((await ctx.pool.query('SELECT mediator_id FROM dispatch.disputes WHERE id=$1', [disputeId])).rows[0].mediator_id, ADMIN_MEDIATOR);
+  assert.equal(await count("SELECT count(*)::int AS n FROM dispatch.dispute_events WHERE dispute_id=$1 AND event_type='MEDIATOR_ASSIGNED'", [disputeId]), 1);
+  assert.equal((await assign(disputeId, ADMIN_SEPARATE, ADMIN_SEPARATE)).status, 200);
+});
+
 test('database enforces one OPEN case per booking, party identity, responder and bounded event data', async () => {
   const { bookingId } = await claimed();
   const disputeId = (await disputes(bookingId, FARMER)).body.dispute.id;

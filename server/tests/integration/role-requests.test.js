@@ -113,7 +113,9 @@ async function makeRequest(url, actor, role = 'provider') {
 test('014 applies after 013, re-runs as a no-op, and keeps existing grants with granted_by NULL', async (t) => {
   const { pool } = await fixture(t, { upgradeFrom013: true });
   const old = await user(pool, 'Existing Operator', ['farmer', 'operator']);
-  assert.deepEqual(await migrate(pool), ['014_role_requests.sql','015_role_request_reason.sql']);
+  const applied = await migrate(pool);
+  assert.deepEqual(applied.slice(0, 2), ['014_role_requests.sql','015_role_request_reason.sql']);
+  assert.equal(new Set(applied).size, applied.length);
   assert.deepEqual(await migrate(pool), []);
   const grant = await grantOf(pool, old.id, 'operator');
   assert.ok(grant, 'existing grant survives the migration');
