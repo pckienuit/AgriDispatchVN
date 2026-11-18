@@ -1,0 +1,30 @@
+# Example input template. Copy to a gitignored *.tfvars file and fill real values
+# from CI/CD or a secret manager. Never commit real secrets, subscription IDs, or IPs.
+# Pass sensitive values via TF_VAR_* environment variables instead of plain files when possible:
+#   TF_VAR_pg_admin_password
+#   TF_VAR_account_database_url
+#   TF_VAR_booking_database_url
+#   TF_VAR_migration_database_url
+#   TF_VAR_internal_service_token
+
+subscription_id     = "00000000-0000-0000-0000-000000000000"
+location            = "japaneast"
+resource_group_name = "rg-agridispatch-bt05"
+name_suffix         = "bt05a1"
+
+# Restrict Key Vault data-plane writes and AKS API reads to your runner/operator CIDR.
+operator_ip_ranges = ["198.51.100.10/32"]
+
+# Pick a Kubernetes version supported by AKS in `location` at deploy time.
+kubernetes_version    = "1.31"
+aks_system_vm_size    = "Standard_D4s_v3"
+aks_system_node_count = 2
+app_service_sku_name  = "S1"
+
+# Produced by the CI build/push step. Never use :latest or invented placeholder digests.
+build_sha      = "0000000000000000000000000000000000000000"
+app_image      = "acragribt05a1.azurecr.io/agridispatch-app@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+function_image = "acragribt05a1.azurecr.io/agridispatch-thumbnail@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+budget_amount_usd     = 43.03
+budget_contact_emails = ["ops@example.invalid"]

@@ -11,6 +11,7 @@ coverage
 **/*.tfplan
 **/*.tfvars
 **/*.tfvars.json
+**/backend.hcl
 **/kubeconfig*
 system-results
 .ci-ephemeral

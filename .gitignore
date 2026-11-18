@@ -17,3 +17,6 @@ coverage/
 kubeconfig*
 *-kubeconfig
 system-results/
+backend.hcl
+.ci-ephemeral/
+build-manifest.json

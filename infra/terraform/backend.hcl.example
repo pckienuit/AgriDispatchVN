@@ -1,0 +1,10 @@
+# Remote state backend configuration template.
+# Copy to a gitignored backend.hcl (or pass via -backend-config) after a human
+# manually creates the separate state Storage Account and private container.
+# This Terraform root never creates its own state backend.
+
+resource_group_name  = "rg-agridispatch-tfstate"
+storage_account_name = "sttfstateREPLACE"
+container_name       = "tfstate"
+key                  = "bt05/terraform.tfstate"
+use_azuread_auth     = true

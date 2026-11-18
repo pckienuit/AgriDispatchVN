@@ -33,6 +33,7 @@ function depsFor(childEnv = {}, extra = {}) {
     portFree: async () => true,
     listDisposable: async () => new Set(),
     gitState: async () => ({ sha: 'abc1234', trackedClean: true }),
+    checkBrowser: async () => 'Synthetic browser orchestration fixture',
     fixtureScript: join(FAKE_DIR, 'fake-fixture.mjs'),
     browserScript: join(FAKE_DIR, 'fake-browser.mjs'),
     childEnv,

@@ -13,6 +13,10 @@ COPY server ./server
 COPY db ./db
 COPY web ./web
 COPY functions ./functions
+COPY infra ./infra
+COPY docs ./docs
+COPY .gitignore ./
+COPY .dockerignore ./
 CMD ["sh", "-c", "npm run lint && npm test && npm run test:integration"]
 
 FROM node:26-alpine AS runtime
