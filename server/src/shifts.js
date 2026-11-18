@@ -304,6 +304,24 @@ export function createShiftRouter({ pool, authenticate }) {
     };
   }
 
+  router.get('/api/bookings/:id/readiness', authenticate, route(['farmer'], async (req) => {
+    const bookingId = identifier(req.params.id);
+    const { rows } = await pool.query(`SELECT b.id,r.drained,r.mature,r.intake_ready,r.created_at,
+      (b.state IN ('GROUPED','ASSIGNED') AND p.status IN ('OPEN','CLAIMED')
+        AND NOT EXISTS (SELECT 1 FROM dispatch.shifts s WHERE s.package_id=p.id)) AS can_confirm
+      FROM dispatch.bookings b
+      LEFT JOIN dispatch.package_bookings pb ON pb.booking_id=b.id
+      LEFT JOIN dispatch.packages p ON p.id=pb.package_id
+      LEFT JOIN LATERAL (SELECT drained,mature,intake_ready,created_at FROM dispatch.readiness_events
+        WHERE booking_id=b.id ORDER BY sequence DESC LIMIT 1) r ON true
+      WHERE b.id=$1 AND b.owner_id=$2`, [bookingId, req.actor.id]);
+    if (!rows[0]) throw fail(404, 'NOT_FOUND');
+    const row = rows[0];
+    return { body: { canConfirm: row.can_confirm === true, readiness: row.created_at ? {
+      bookingId, drained:row.drained, mature:row.mature, intakeReady:row.intake_ready, confirmedAt:row.created_at.toISOString(),
+    } : null } };
+  }));
+
   router.post('/api/bookings/:id/readiness', authenticate, route(['farmer'], async (req) => {
     const bookingId = identifier(req.params.id);
     const flags = validateReadinessInput(req.body);

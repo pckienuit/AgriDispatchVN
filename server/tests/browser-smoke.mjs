@@ -72,6 +72,22 @@ try {
       await fill('#login-email',`synthetic-${role}@example.com`);await fill('#login-password',fixture.password);
       await click('form button[type=submit]');await wait("document.querySelector('#logout-button').hidden===false");
     };
+    await login('farmer');
+    await route(`#booking/${fixture.bookingId}`,"!!document.querySelector('#ready-drained')");
+    assert.equal(await evaluate("document.querySelector('#ready-drained').checked"),false);
+    await click('#ready-drained');
+    await click('#readiness-submit');
+    await wait("document.querySelector('#readiness-feedback').innerText.includes('Đã lưu')");
+    await route('#bookings',"!!document.querySelector('.card')");
+    await route(`#booking/${fixture.bookingId}`,"!!document.querySelector('#ready-drained')");
+    assert.equal(await evaluate("document.querySelector('#ready-drained').checked"),true);
+    assert.equal(await evaluate("document.querySelector('#ready-mature').checked"),false);
+    await click('#ready-drained');
+    for (const key of ['drained','mature','intakeReady']) await click(`#ready-${key}`);
+    await click('#readiness-submit');
+    await wait("document.querySelector('#readiness-feedback').innerText.includes('Đã lưu')");
+    await shot('readiness-desktop-confirmed');
+    await click('#logout-button'); await wait("!!document.querySelector('#login-email')");
     await login('operator');
     await route('#shifts',"[...document.querySelectorAll('button')].some(b=>b.textContent==='Bắt đầu ca')");
     await shot('operations-desktop-start');
@@ -101,6 +117,13 @@ try {
     await route(shiftHash,"!!document.querySelector('.timeline')");
     assert.equal(await evaluate("document.querySelectorAll('main form').length"),0);
     await shot('operations-mobile-provider-readonly');
+    await click('#logout-button'); await wait("!!document.querySelector('#login-email')");
+    await login('farmer');
+    await route(`#booking/${fixture.bookingId}`,"!!document.querySelector('#readiness-submit')");
+    assert.equal(await evaluate("document.querySelector('#readiness-submit').disabled"),true);
+    assert.ok(await evaluate('[...document.querySelectorAll(".check-row input")].every(e=>e.disabled)'));
+    assert.ok(await evaluate('document.documentElement.scrollWidth<=document.documentElement.clientWidth'));
+    await shot('readiness-mobile-frozen');
     assert.deepEqual(errors,[]);
     console.log('OPERATIONS_BROWSER_PASS: real gateway assigned operator start/pause/resume/complete, area rejection and provider read-only; desktop/mobile.');
   } else if (process.argv.includes('--recruitment')) {

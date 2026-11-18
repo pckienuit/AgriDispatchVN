@@ -54,6 +54,8 @@ Each write is permission-checked, transactional and audited. Exact endpoint payl
 
 ### Shift UI and read contract (G10b)
 
+- Booking-owner UI shows latest readiness on `#booking/:id`. `GET /api/bookings/:id/readiness` is farmer-owner scoped and returns `{canConfirm,readiness}`; `readiness` is null before the first confirmation, otherwise includes `bookingId,drained,mature,intakeReady,confirmedAt`. Unrelated owner gets 404; non-farmer gets 403. Read permission does not grant mutation authority: POST rechecks package state and shift under lock. After shift start, UI remains read-only with recorded values. These flags are owner reports, not technical certification.
+
 - `#shifts` lists visible shifts; assigned operators also see unstarted claimed packages. `#shift/:id` shows history and server-derived `canOperate`. Providers/coops have read-only views; API mutation ownership remains authoritative.
 - `GET /api/shift-packages?limit=20&offset=0`: operator only, bounded pagination, own claimed packages without a shift. Returns `packages: [{id,locality,startAt,endAt,bookingCount,ready}]`. `ready` reflects latest owner confirmations, not a reservation: start rechecks readiness under the package lock.
 - `GET /api/shifts` returns `shifts`; `GET /api/shifts/:id` returns `shift` with ordered `events`. Read DTO includes `canOperate` for the current actor. Start/pause/resume/complete write responses need not carry an operation grant; UI reloads the authorized read before showing further controls.

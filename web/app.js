@@ -697,7 +697,7 @@ if (isBrowser) {
       main.replaceChildren(
         el('p', { class: 'back' }, [el('a', { href: '#bookings', text: '← Quay lại đơn của tôi' })]),
         setMainHeading(`Đơn ${b.service.name}`),
-        el('p', { class: 'alert success', role: 'status' }, [el('span', { text: `Trạng thái: ${stateLabel(b.state)}. Yêu cầu đã được ghi nhận nhưng chưa được điều máy hay thanh toán.` })]),
+        el('p', { class: 'alert', role: 'status', text: `Trạng thái: ${stateLabel(b.state)}. Trạng thái công việc không xác nhận đã nhận tiền.` }),
         el('dl', { class: 'facts' }, [
           el('div', {}, [el('dt', { text: 'Thửa ruộng' }), el('dd', { text: `${b.field.name} (${formatArea(b.field.areaM2)})` })]),
           el('div', {}, [el('dt', { text: 'Dịch vụ' }), el('dd', { text: b.service.name })]),
@@ -711,6 +711,7 @@ if (isBrowser) {
         el('ol', { class: 'timeline' }, data.events.map((ev) => el('li', { text: `${eventLabel(ev.type)}: ${stateLabel(ev.state)}, ${formatDateTime(ev.createdAt)}` }))),
       );
       focusMain();
+      if (session.user.roles.includes('farmer')) await renderReadiness(id, routeHash);
     } catch (error) {
       if (location.hash !== routeHash) return;
       if (error instanceof ApiError && error.status === 404) {
@@ -722,12 +723,59 @@ if (isBrowser) {
     }
   }
 
+  async function renderReadiness(id, routeHash) {
+    const section = el('section', { class: 'page', 'aria-label': 'Ruộng sẵn sàng' });
+    main.append(section);
+    async function load() {
+      section.replaceChildren(loadingBlock('Đang tải xác nhận ruộng…'));
+      try {
+        const { data } = await api.request('GET', `/api/bookings/${id}/readiness`, { auth: true });
+        if (location.hash !== routeHash) return false;
+        const form = el('form', { class: 'form', 'aria-label': 'Xác nhận ruộng sẵn sàng' });
+        const inputs = {};
+        for (const [key, label] of [['drained', 'Đã xử lý nước phù hợp để máy vào'], ['mature', 'Cây trồng đã sẵn sàng cho công việc'], ['intakeReady', 'Đã bố trí nơi nhận hoặc vận chuyển sau công việc']]) {
+          const input = el('input', { id: `ready-${key}`, type: 'checkbox', disabled: !data.canConfirm });
+          input.checked = data.readiness?.[key] === true;
+          inputs[key] = input;
+          form.append(el('label', { class: 'check-row', for: `ready-${key}` }, [input, el('span', { text: label })]));
+        }
+        const feedback = el('div', { id: 'readiness-feedback', 'aria-live': 'polite' });
+        const submit = el('button', { id: 'readiness-submit', type: 'submit', class: data.canConfirm ? 'btn primary' : 'btn secondary', text: data.canConfirm ? 'Lưu xác nhận' : 'Chỉ xem xác nhận', disabled: !data.canConfirm });
+        form.append(feedback, submit);
+        section.replaceChildren(el('h2', { text: 'Ruộng sẵn sàng' }), el('p', { text: 'Chỉ xác nhận điều kiện bạn đã kiểm tra. Đây là thông tin chủ ruộng cung cấp, không phải chứng nhận kỹ thuật. Có thể lưu cả điều kiện chưa đạt.' }),
+          el('p', { text: data.canConfirm ? 'Có thể cập nhật trước khi ca bắt đầu.' : 'Chưa thể cập nhật: đơn chưa được gom vào gói, gói đã hủy hoặc ca đã bắt đầu.' }),
+          data.readiness ? el('p', { text: `Xác nhận gần nhất: ${formatDateTime(data.readiness.confirmedAt)}` }) : el('p', { text: 'Chưa có xác nhận.' }), form);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          if (submit.disabled) return;
+          submit.disabled = true;
+          feedback.replaceChildren();
+          try {
+            await api.request('POST', `/api/bookings/${id}/readiness`, { auth: true, body: Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, input.checked])) });
+            if (location.hash !== routeHash) return;
+            if (!await load() || location.hash !== routeHash) return;
+            section.querySelector('#readiness-feedback').textContent = 'Đã lưu xác nhận trên máy chủ.';
+            section.querySelector('#readiness-submit').focus();
+          } catch (error) {
+            if (location.hash !== routeHash) return;
+            feedback.replaceChildren(el('p', { role: 'alert', text: ['SHIFT_STARTED', 'BOOKING_UNAVAILABLE'].includes(error.code) ? 'Ca đã bắt đầu hoặc gói không còn cho phép cập nhật. Tải lại để xem trạng thái mới.' : messageForError(error) }), el('button', { type: 'button', class: 'btn secondary', text: 'Tải lại', on: { click: load } }));
+          } finally { submit.disabled = false; }
+        });
+        return true;
+      } catch (error) {
+        if (location.hash === routeHash) section.replaceChildren(errorBlock(error, load));
+        return false;
+      }
+    }
+    await load();
+  }
+
   function stateLabel(state) {
-    return state === 'REQUESTED' ? 'Đã gửi yêu cầu' : state;
+    return ({ REQUESTED: 'Đã gửi yêu cầu', GROUPED: 'Đã gom vào gói', ASSIGNED: 'Đã phân công' })[state] ?? state;
   }
 
   function eventLabel(type) {
-    return type === 'BOOKING_REQUESTED' ? 'Đã gửi yêu cầu' : type;
+    return ({ BOOKING_REQUESTED: 'Đã gửi yêu cầu', COORDINATOR_ASSIGNED: 'Đã ủy quyền điều phối', BOOKING_GROUPED: 'Đã gom đơn', BOOKING_ASSIGNED: 'Đã phân công', BOOKING_UNGROUPED: 'Đã đưa đơn khỏi gói' })[type] ?? type;
   }
 
   function renderLogin() {

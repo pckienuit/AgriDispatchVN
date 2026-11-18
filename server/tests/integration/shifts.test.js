@@ -171,6 +171,12 @@ test('readiness is owner-only, strict, and keeps every confirmation until the sh
   const f = await fixture();
   const [b0] = f.bookingIds;
   const path = `/api/bookings/${b0}/readiness`;
+  const before = await get(path, FARMER);
+  assert.equal(before.status, 200);
+  assert.equal(before.body.readiness, null);
+  assert.equal(before.body.canConfirm, true);
+  assert.equal((await get(path, OTHER_FARMER)).status, 404);
+  assert.equal((await get(path, PROVIDER)).status, 403);
   assert.equal((await post(path, ALL_TRUE, OTHER_FARMER)).status, 404);
   assert.equal((await post(path, ALL_TRUE, COOP)).status, 403);
   assert.equal((await post(path, ALL_TRUE, OTHER_COOP)).status, 403);
@@ -183,10 +189,12 @@ test('readiness is owner-only, strict, and keeps every confirmation until the sh
   const first = await post(path, { drained: true, mature: true, intakeReady: false }, FARMER);
   assert.equal(first.status, 200);
   assert.equal(first.body.readiness.intakeReady, false);
+  assert.deepEqual((await get(path, FARMER)).body.readiness, first.body.readiness);
   assert.equal((await ready(b0)).body.readiness.intakeReady, true);
   assert.equal(await count('SELECT count(*)::int AS n FROM dispatch.readiness_events WHERE booking_id = $1', [b0]), 2);
 
   const loose = await booking(nextDay());
+  assert.equal((await get(`/api/bookings/${loose}/readiness`, FARMER)).body.canConfirm, false);
   assert.equal((await ready(loose)).status, 409);
   assert.equal((await ready(loose)).body.error.code, 'BOOKING_UNAVAILABLE');
 });

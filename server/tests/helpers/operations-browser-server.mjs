@@ -36,7 +36,7 @@ const offer=(await post(`/api/applications/${application.id}/offers`,{},actors.p
 await post(`/api/offers/${offer.id}/accept`,{},actors.operator.token);
 const machine=(await post('/api/machines',{name:'Máy gặt mô phỏng',type:'harvester'},actors.provider.token)).machine;
 await post(`/api/packages/${pkg.id}/claim`,{machineId:machine.id,operatorId:actors.operator.user.id},actors.provider.token);
-await post(`/api/bookings/${order.id}/readiness`,{drained:true,mature:true,intakeReady:true},actors.farmer.token);
+
 await writeFile(process.env.SYNTHETIC_LOGIN_FILE,JSON.stringify({password,packageId:pkg.id,bookingId:order.id}),{mode:0o600});
 console.log('OPERATIONS_SMOKE_READY');
 process.on('SIGTERM',async()=>{await Promise.all([account,booking].map(s=>new Promise(r=>{s.close(r);s.closeAllConnections();})));await pool.end();await db.drop();process.exit(0);});
