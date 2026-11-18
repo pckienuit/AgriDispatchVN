@@ -22,6 +22,16 @@ Approved implementation plan: IS402 delivery for 24 November 2026. This contract
 
 ## Account endpoints
 
+### Role approval UI (local implementation, Azure verification pending)
+
+User approved web administration on 18 November 2026: authenticated users request `provider`, `operator` or `coop`; another current admin approves/rejects. No public admin requests, self-approval, account deletion, disable or role revocation in this slice. First admin remains an explicit operator-controlled deployment step, never public registration. Approval is application access, not certification of machines, operators or legal qualifications.
+
+- `GET /api/role-requests?limit=20&offset=0`: own request history; `POST /api/role-requests {role}` creates PENDING, 201. Duplicate pending returns `REQUEST_PENDING`; existing grant returns `ROLE_ALREADY_GRANTED`.
+- `GET /api/admin/role-requests?limit=20&offset=0`: current admin queue, pending first. `POST /api/admin/role-requests/:id/approve {}` and `/reject {reason}` decide once under lock. Rejection reason 1..500 code points; self-decision returns `SELF_APPROVAL_FORBIDDEN`; final requests return `REQUEST_DECIDED`. Approval and grant with grantor audit commit together.
+- List `{items,limit,offset}` uses limit 1..20 and offset 0..10000. DTO: `id,userId,userName,role,status,createdAt,decidedAt,decisionReason,canDecide`. No passwords, tokens or contacts. New routes belong to account-service; same-origin gateway allowlists only these paths/methods and bounded pagination. Existing sessions read live roles on each authenticated request; no new role snapshot.
+- UI `#roles` and `#admin/roles` provide loading, empty, error/retry, paging, state/history and server-confirmed decisions. Navigation shows Quản trị only for current admin sessions; API rechecks the live admin role independently. Local Chromium checks cover request, separate admin approval, rejection reason validation, mobile history and inability to request an already granted role. Real two-service HTTP checks show that an existing session receives a new role via `/api/me`; no re-login is required by the backend.
+- Migrations 014/015 preserve existing grants with null grantor, record new approvals and immutable request decisions, and explicitly reject null/blank rejection reasons. PostgreSQL `CHECK` alone accepts unknown/null expressions, so the null guard is explicit. No live admin account is bootstrapped by migrations; synthetic fixture SQL grants are test-only.
+
 | Method/path | Input | Result |
 | --- | --- | --- |
 | POST `/api/auth/register` | `email`, `password`, `name` | 201 user; duplicate 409; password minimum 12 characters, bounded to 128 |

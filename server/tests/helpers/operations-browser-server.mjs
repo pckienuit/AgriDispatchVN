@@ -14,7 +14,8 @@ assert.ok(process.env.SYNTHETIC_LOGIN_FILE, 'SYNTHETIC_LOGIN_FILE output path re
 const db=await createDisposableDatabase(process.env.TEST_DATABASE_URL);
 const pool=createPool(db.url);await migrate(pool);await seedCatalog(pool);
 const secret=randomBytes(32).toString('base64url'),password=randomBytes(20).toString('base64url');
-const account=createAccountApp({pool,internalServiceToken:secret}).listen(33101,'127.0.0.1');
+// Repeated synthetic role-switch logins share loopback; production throttle remains unchanged.
+const account=createAccountApp({pool,internalServiceToken:secret,throttle:{loginIpMax:1000}}).listen(33101,'127.0.0.1');
 // Explicit synthetic browser-only object store. Never used by runtime server configuration.
 const objects=new Map();
 const evidenceStore={put:async(key,bytes,contentType)=>{objects.set(key,{bytes,contentType});return {etag:'"synthetic-browser"',versionId:null};},get:async(key,{thumbnail=false}={})=>thumbnail?null:objects.get(key)??null,remove:async key=>objects.delete(key)};

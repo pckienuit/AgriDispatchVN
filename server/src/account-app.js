@@ -3,6 +3,7 @@ import { Buffer } from 'node:buffer';
 import express from 'express';
 import { createRequestContext } from './observability.js';
 import { hashPassword, verifyPassword } from './auth/password.js';
+import {createRoleRequestRouter} from './role-requests.js';
 import {
   clearRateLimit,
   createSession,
@@ -201,6 +202,15 @@ export function createAccountApp({ pool, buildSha = 'development', log, ...optio
     res.json({ user: found.user, expiresAt: found.expiresAt });
   }));
 
+  app.use(createRoleRequestRouter({pool,authenticate:async(req,res,next)=>{
+    try{
+      const found=await findSession(pool,bearer(req));
+      if(!found)return res.status(401).json({error:{code:'UNAUTHENTICATED'}});
+      req.actor=found.user;next();
+    }catch(error){
+      res.status(error instanceof HttpError?401:503).json({error:{code:error instanceof HttpError?'UNAUTHENTICATED':'SERVICE_UNAVAILABLE'}});
+    }
+  }}));
   app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND' } }));
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);

@@ -10,13 +10,23 @@ export function createAccountGateway({ accountServiceUrl, timeoutMs = 3000 }) {
   if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error('Invalid account service origin');
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 10000) throw new Error('Invalid identity timeout');
   return async (req, res, next) => {
-    if (!routes.has(`${req.method} ${req.path}`)) return next();
+    const roleList=req.method==='GET'&&['/api/role-requests','/api/admin/role-requests'].includes(req.path);
+    const roleWrite=req.method==='POST'&&(req.path==='/api/role-requests'||/^\/api\/admin\/role-requests\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(approve|reject)$/i.test(req.path));
+    if (!routes.has(`${req.method} ${req.path}`)&&!roleList&&!roleWrite) return next();
+    const target=new URL(req.path,origin);
+    if(roleList){
+      const query=new URL(req.originalUrl,'http://gateway.invalid').searchParams;
+      for(const [key,value] of query){
+        if(!['limit','offset'].includes(key)||query.getAll(key).length!==1||!/^\d{1,5}$/.test(value)||Number(value)>(key==='limit'?20:10000)||(key==='limit'&&Number(value)<1))return res.status(400).json({error:{code:'INVALID_PAGINATION'}});
+        target.searchParams.set(key,value);
+      }
+    }
     res.set('Cache-Control', 'no-store');
     try {
       const headers = { 'Content-Type': 'application/json' };
       if (sanitizeRequestId(req.requestId)) headers['X-Request-ID']=req.requestId;
       if (req.get('Authorization')) headers.Authorization = req.get('Authorization');
-      const response = await fetch(new URL(req.path, origin), {
+      const response = await fetch(target, {
         method: req.method, headers,
         ...(req.method === 'POST' ? { body: JSON.stringify(req.body ?? {}) } : {}),
         signal: AbortSignal.timeout(timeoutMs), redirect: 'error',
@@ -30,7 +40,7 @@ export function createAccountGateway({ accountServiceUrl, timeoutMs = 3000 }) {
           const { done, value } = await reader.read();
           if (done) break;
           size += value.byteLength;
-          if (size > 16384) throw new Error('Oversized account response');
+          if (size > (roleList?65536:16384)) throw new Error('Oversized account response');
           chunks.push(value);
         }
       } finally { await reader.cancel(); }

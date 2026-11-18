@@ -58,6 +58,20 @@ test('gateway retains peer auth errors and retry-after; logout204 remains empty'
   assert.equal(await logout.text(), '');
 });
 
+test('role queue gateway forwards only approved methods and bounded query keys',async t=>{
+ const seen=[];
+ const url=await fixture(t,(req,res)=>{seen.push(req.originalUrl);res.json({items:[],limit:20,offset:20});});
+ const queue=await fetch(url+'/api/admin/role-requests?limit=20&offset=20');
+ assert.equal(queue.status,200);assert.equal(seen[0],'/api/admin/role-requests?limit=20&offset=20');
+ const id='10000000-0000-4000-8000-000000000001';
+ for(const path of ['/api/role-requests',`/api/admin/role-requests/${id}/approve`,`/api/admin/role-requests/${id}/reject`])assert.equal((await fetch(url+path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,200);
+ for(const path of ['/api/admin/role-requests/bad/approve',`/api/admin/role-requests/${id}/delete`])assert.equal((await fetch(url+path,{method:'POST'})).status,404);
+ const before=seen.length;
+ assert.equal((await fetch(url+'/api/admin/role-requests?host=evil')).status,400);
+ assert.equal((await fetch(url+'/api/admin/role-requests?limit=20&limit=1')).status,400);
+ assert.equal(seen.length,before);
+});
+
 test('gateway bounds slow, redirected, oversized or non-JSON peer replies', async (t) => {
   for (const handler of [() => {}, (req, res) => res.redirect('https://example.com'), (req, res) => res.send('private host error'), (req, res) => res.json({ text: 'x'.repeat(20000) })]) {
     const url = await fixture(t, handler, { timeoutMs: 50 });

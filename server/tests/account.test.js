@@ -142,7 +142,7 @@ test('database outage returns 503 without leaking driver details', async (t) => 
 });
 
 test('readiness reports unavailable when account schema query fails', async (t) => {
-  const failing = { async query() { throw new Error('relation account.users does not exist'); } };
+  const failing = { async query() { throw new Error('relation account.users does not exist'); }, async connect() { throw new Error('DB unavailable'); } };
   const url = await serve(t, { pool: failing, internalServiceToken: SECRET_FOR_APP });
   const response = await fetch(`${url}/ready`);
   assert.equal(response.status, 503);

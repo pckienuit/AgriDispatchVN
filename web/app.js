@@ -10,6 +10,7 @@ import { settlementRoute, renderSettlement } from './settlement.js';
 import { disputesRoute, renderDisputes } from './disputes.js';
 import { renderActivity } from './activity.js';
 import { postponementRoute, renderPostponement } from './postponement.js';
+import {accountsRoute,renderAccounts} from './accounts.js';
 
 const API_TIMEOUT_MS = 10000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -363,6 +364,8 @@ if (isBrowser) {
     sessionState.textContent = signedIn ? `Đang đăng nhập: ${session.user.name}` : 'Chưa đăng nhập';
     logoutButton.hidden = !signedIn;
     authLink.hidden = signedIn;
+    doc.getElementById('roles-link').hidden=!signedIn;
+    doc.getElementById('admin-roles-link').hidden=!signedIn||!session.user.roles.includes('admin');
   }
 
   function clearSession(message) {
@@ -1001,6 +1004,8 @@ if (isBrowser) {
     if (dispute) return renderDisputes({ main, api, session, announce, route: dispute, signIn: requireSignIn });
     const postponement = postponementRoute(location.hash);
     if (postponement) return renderPostponement({ main, api, session, announce, route: postponement, signIn: requireSignIn });
+    const accounts=accountsRoute(location.hash);
+    if(accounts)return renderAccounts({main,api,session,announce,route:accounts,signIn:requireSignIn});
     if (route.name === 'services') return renderServices();
     if (route.name === 'service') return renderService(route.id);
     if (route.name === 'fields') return renderFields();
