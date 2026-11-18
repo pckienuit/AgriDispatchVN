@@ -174,6 +174,7 @@ try {
       await shot('dispatch-mobile-provider');
       await click('#logout-button');await wait("!!document.querySelector('#login-email')");await login('farmer');
     }
+    await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
     await route(`#booking/${fixture.bookingId}`,"!!document.querySelector('#ready-drained')");
     assert.equal(await evaluate("document.querySelector('#ready-drained').checked"),false);
     await click('#ready-drained');
@@ -223,6 +224,10 @@ try {
       await fill('#cancel-reason','Không được xóa ca đã làm');
       await evaluate("document.querySelector('#cancel-reason').closest('form').requestSubmit()");
       await wait("document.querySelector('main').innerText.includes('không thể hủy')");
+      assert.equal(await evaluate("document.querySelector('#cancel-reason').closest('form').querySelector('button[type=submit]').disabled"),true);
+      assert.equal(await evaluate("document.querySelector('#cancel-reason').disabled"),true);
+      assert.equal(await evaluate("document.querySelector('#cancel-reason').value"),'Không được xóa ca đã làm');
+      assert.ok(await evaluate("[...document.querySelector('#cancel-reason').closest('form').querySelectorAll('button')].some(b=>b.textContent==='Tải lại'&&!b.disabled)"));
       await shot('dispatch-mobile-started-cancel-rejected');
     }
     await click('#logout-button'); await wait("!!document.querySelector('#login-email')");
@@ -398,7 +403,7 @@ try {
     await wait("document.querySelector('main').innerText.includes('Đã nhận đề nghị')");
     await shot('recruitment-mobile-accepted');
     await logout(); await login('provider');
-    await route(jobHash, "document.querySelector('main').innerText.includes('1/1 chỗ đã nhận')");
+    await route(jobHash, "document.querySelector('main').innerText.includes('1/1 chỗ đã nhận') && [...document.querySelectorAll('button')].some(b=>b.textContent==='Đóng tin tuyển')");
     await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Đóng tin tuyển').click()");
     await wait("document.querySelector('main').innerText.includes('Đã đóng')");
     await shot('recruitment-mobile-closed');
@@ -430,8 +435,10 @@ try {
   await click('a[href^="#request/"]'); await wait("!!document.querySelector('#booking-start')");
   await click('form button[type=submit]');
   assert.equal(await evaluate('document.activeElement.id'), 'booking-field');
-  await evaluate("document.querySelector('#booking-field').selectedIndex=1");
+  await evaluate("(()=>{const e=document.querySelector('#booking-field');e.selectedIndex=1;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()");
   await fill('#booking-start', '2026-12-01T08:00'); await fill('#booking-end', '2026-12-01T12:00');
+  assert.equal(await evaluate("document.querySelector('#booking-field').hasAttribute('aria-invalid')"),false);
+  assert.equal(await evaluate("document.querySelector('#booking-field').parentElement.querySelector('.field-error')!==null"),false);
   await shot('desktop-request');
   await click('form button[type=submit]');
   await wait("location.hash.startsWith('#booking/') && !!document.querySelector('.timeline')");

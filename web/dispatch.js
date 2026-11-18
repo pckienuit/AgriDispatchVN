@@ -315,6 +315,7 @@ export async function renderDispatch({ main, api, session, announce, route, sign
 
   function cancelForm(pkg) {
     const form = el('form', { class: 'form', novalidate: true });
+    let stale = false;
     const feedback = el('div', { 'aria-live': 'polite' });
     const reason = el('input', { id: 'cancel-reason', name: 'reason', type: 'text', maxlength: 500 });
     const submit = el('button', { type: 'submit', class: 'btn secondary', text: 'Hủy gói' });
@@ -336,9 +337,13 @@ export async function renderDispatch({ main, api, session, announce, route, sign
         announce('Máy chủ đã ghi nhận hủy gói. Đang tải lại trạng thái.');
         await renderDetail();
       } catch (error) {
-        if (active()) feedback.replaceChildren(alertNode(dispatchErrorMessage(error)));
+        if (active()) {
+          stale = ['SHIFT_ACTIVE', 'PACKAGE_UNAVAILABLE'].includes(error.code);
+          reason.disabled = stale;
+          feedback.replaceChildren(...(stale ? failure(error, renderDetail) : [alertNode(dispatchErrorMessage(error))]));
+        }
       } finally {
-        submit.disabled = false;
+        submit.disabled = stale;
       }
     });
     return form;
