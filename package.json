@@ -13,6 +13,8 @@
     "dev": "node --watch --env-file-if-exists=.env server/src/server.js",
     "test": "node --test server/tests/*.test.js functions/thumbnail/*.test.cjs",
     "test:integration": "node --env-file-if-exists=.env --test server/tests/integration/*.test.js",
+    "test:coverage": "node --experimental-test-coverage --test-coverage-include='server/src/**' --test-coverage-include='functions/thumbnail/*.cjs' --test-coverage-exclude='**/*.test.*' --test server/tests/*.test.js server/tests/integration/*.test.js functions/thumbnail/*.test.cjs",
+    "test:kubernetes": "node server/scripts/test-kubernetes.js",
     "lint": "eslint .",
     "db:migrate": "node --env-file-if-exists=.env server/scripts/migrate.js"
   },
