@@ -3,7 +3,7 @@
 // a kubeconfig path outside the default kubeconfig, a budget gate ID and a bounded ready timeout.
 // ponytail: readiness is polled from kubectl JSON with one deadline; no retry on transient API errors. Ceiling: flaky API servers. Upgrade: backoff per call.
 import { fileURLToPath } from 'node:url';
-import { resolve } from 'node:path';
+import { resolve, isAbsolute } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 
 import { renderAccount, renderMigrationJob } from './render-k8s.js';
@@ -49,6 +49,8 @@ export function validateDeployArgs(args) {
 
 // Pure: derive the ordered plan. Namespace first, then migration Job to completion, then the account Deployment.
 export function buildPlan(args, { kubeconfig = '<kubeconfig>' } = {}) {
+  const repo = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
+  if (kubeconfig !== '<kubeconfig>' && (!isAbsolute(kubeconfig) || kubeconfig.endsWith('/.kube/config') || resolve(kubeconfig).startsWith(repo + '/'))) throw coded('INVALID_KUBECONFIG', 'kubeconfig must be a dedicated absolute path outside the repository');
   const target = validateDeployArgs(args);
   const common = { image: args.image, buildSha: args.buildSha, clientId: args.clientId, migrationClientId: args.migrationClientId, tenantId: args.tenantId, keyVaultName: args.keyVaultName, subnetName: args.subnetName ?? 'snet-aks' };
   const account = renderAccount(common);
