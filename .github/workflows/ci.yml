@@ -49,3 +49,110 @@ jobs:
       - run: docker build -f infra/Function.Dockerfile -t agridispatch-thumbnail:ci .
       - run: docker run --rm --entrypoint node agridispatch-thumbnail:ci --test functions/thumbnail/processor.test.cjs functions/thumbnail/handler.test.cjs
       - run: docker run --rm --network host -e TEST_DATABASE_URL agridispatch-vn:test
+
+  publish:
+    name: Build SHA images and publish to ACR
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/cloud/is402-2026-11-24'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Verify required variables and secrets
+        run: |
+          if [ -z "${ACR_REGISTRY:-}" ]; then
+            echo "ACR_REGISTRY variable is required but not configured" >&2
+            exit 1
+          fi
+
+      - name: Log in to Azure with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to ACR
+        run: az acr login --name "${ACR_REGISTRY%.azurecr.io}"
+
+      - name: Build and push App image (agridispatch-vn)
+        id: push_app
+        run: |
+          set -euo pipefail
+          IMAGE="${ACR_REGISTRY}/agridispatch-vn:${GITHUB_SHA}"
+          docker build \
+            -f infra/Dockerfile \
+            --build-arg BUILD_SHA="${GITHUB_SHA}" \
+            -t "$IMAGE" .
+          push_log=$(docker push "$IMAGE")
+          digest=$(echo "$push_log" | grep -Eo 'sha256:[0-9a-f]{64}')
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${IMAGE}@${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify App digest against registry
+        run: |
+          set -euo pipefail
+          registry_digest=$(az acr repository show \
+            --name "${ACR_REGISTRY%.azurecr.io}" \
+            --image "agridispatch-vn:${GITHUB_SHA}" \
+            --query digest --output tsv)
+          if [ "$registry_digest" != "${{ steps.push_app.outputs.digest }}" ]; then
+            echo "FAIL: App image digest does not match ACR registry" >&2
+            exit 1
+          fi
+          echo "App image digest verified: $registry_digest"
+
+      - name: Build and push Function image (agridispatch-thumbnail)
+        id: push_fn
+        run: |
+          set -euo pipefail
+          IMAGE="${ACR_REGISTRY}/agridispatch-thumbnail:${GITHUB_SHA}"
+          docker build \
+            -f infra/Function.Dockerfile \
+            --build-arg BUILD_SHA="${GITHUB_SHA}" \
+            -t "$IMAGE" .
+          push_log=$(docker push "$IMAGE")
+          digest=$(echo "$push_log" | grep -Eo 'sha256:[0-9a-f]{64}')
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Function digest against registry
+        run: |
+          set -euo pipefail
+          registry_digest=$(az acr repository show \
+            --name "${ACR_REGISTRY%.azurecr.io}" \
+            --image "agridispatch-thumbnail:${GITHUB_SHA}" \
+            --query digest --output tsv)
+          if [ "$registry_digest" != "${{ steps.push_fn.outputs.digest }}" ]; then
+            echo "FAIL: Function image digest does not match ACR registry" >&2
+            exit 1
+          fi
+          echo "Function image digest verified: $registry_digest"
+
+      - name: Write build manifest
+        run: |
+          node server/scripts/jenkins-build.js write-manifest build-manifest.json
+        env:
+          BUILD_SHA: ${{ github.sha }}
+          ACR_REGISTRY: ${{ env.ACR_REGISTRY }}
+          PUBLISH: "true"
+          APP_DIGEST: ${{ steps.push_app.outputs.digest }}
+          FUNCTION_DIGEST: ${{ steps.push_fn.outputs.digest }}
+
+      - name: Upload build manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-manifest-${{ github.sha }}
+          path: build-manifest.json
+          retention-days: 30
