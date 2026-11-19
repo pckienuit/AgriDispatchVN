@@ -612,7 +612,7 @@ const doc = root.document;
       h('button', {
         type: 'button',
         class: 'toast__close',
-        ariaLabel: 'Đóng thông báo',
+        'aria-label': 'Đóng thông báo',
         on: { click: function () { if (t.parentNode) t.parentNode.removeChild(t); } }
       }, ui.icon('x'))
     );
@@ -624,7 +624,7 @@ const doc = root.document;
   /* Giữ khoảng đệm đáy dựa trên độ cao thật của thanh hành động, tabbar và demo-strip */
   ui.bindReserve = function (appNode) {
     if (!doc || !appNode) return;
-    var ro = null, mo = null, lastReserve = -1, lastTabH = -1, lastTopH = -1, lastToastTop = -1;
+    var ro = null, mo = null, lastReserve = -1, lastTabH = -1, lastTopH = -1, lastToastTop = -1, lastToastBottom = -1;
     var scheduled = false;
 
     function clearProp(el, name) {
@@ -728,6 +728,12 @@ const doc = root.document;
         if (reserve > 0) setProp(appNode, '--bottom-reserve', reserve + 'px');
         else clearProp(appNode, '--bottom-reserve');
       }
+
+      if (obstacle !== lastToastBottom) {
+        lastToastBottom = obstacle;
+        if (obstacle > 0) setProp(doc.documentElement, '--toast-bottom', obstacle + 'px');
+        else clearProp(doc.documentElement, '--toast-bottom');
+      }
     }
 
     function scheduleMeasure() {
@@ -793,6 +799,7 @@ const doc = root.document;
       if (mo) { try { mo.disconnect(); } catch { /* bỏ qua: trình duyệt không hỗ trợ hoặc đã gỡ */ } }
       if (root.removeEventListener) { root.removeEventListener('resize', onResize); }
       clearProp(doc.documentElement, '--toast-top');
+      clearProp(doc.documentElement, '--toast-bottom');
     });
 
     scheduleMeasure();

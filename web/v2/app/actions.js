@@ -20,13 +20,13 @@ export function errorText(error) {
 // Button that runs an API call. Disabled while pending so a double tap cannot send twice; shows the server's
 // reason inline when refused. o: { label, icon, kind, size, block, confirm, run: async () => any, okText, onDone, hint }
 export function apiButton(o) {
-  const msg = h('p', { class: 'msg msg--error', role: 'alert', hidden: true });
+  const msg = h('p', { class: 'msg msg--error', role: 'alert', tabindex: '-1', hidden: true });
   let busy = false;
   const btn = ui.button({ label: o.label, icon: o.icon, kind: o.kind || 'primary', size: o.size, block: o.block, disabled: o.disabled, onClick: () => (o.confirm ? ask() : go()) });
   async function go() {
     if (busy) return;
     busy = true;
-    btn.disabled = true;
+    btn.setAttribute('aria-disabled', 'true');
     btn.setAttribute('aria-busy', 'true');
     msg.hidden = true;
     try {
@@ -36,10 +36,11 @@ export function apiButton(o) {
     } catch (error) {
       msg.textContent = errorText(error);
       msg.hidden = false;
+      msg.focus?.();
     } finally {
       busy = false;
       if (btn.isConnected) {
-        btn.disabled = Boolean(o.disabled);
+        if (!o.disabled) btn.removeAttribute('aria-disabled');
         btn.removeAttribute('aria-busy');
       }
     }
@@ -53,14 +54,14 @@ export function apiButton(o) {
 
 // Form submit wrapper with the same busy and error handling. Returns the form element.
 export function apiForm({ fields, submitLabel, run, onDone, className = 'stack', submitKind = 'primary' }) {
-  const msg = h('p', { class: 'msg msg--error', role: 'alert', hidden: true });
+  const msg = h('p', { class: 'msg msg--error', role: 'alert', tabindex: '-1', hidden: true });
   const submit = h('button', { class: `btn btn--${submitKind} btn--lg btn--block`, type: 'submit' }, submitLabel);
   let busy = false;
   const form = h('form', { class: className, novalidate: true, on: { submit: async (event) => {
     event.preventDefault();
     if (busy) return;
     busy = true;
-    submit.disabled = true;
+    submit.setAttribute('aria-disabled', 'true');
     submit.setAttribute('aria-busy', 'true');
     msg.hidden = true;
     try {
@@ -73,7 +74,7 @@ export function apiForm({ fields, submitLabel, run, onDone, className = 'stack',
     } finally {
       busy = false;
       if (submit.isConnected) {
-        submit.disabled = false;
+        submit.removeAttribute('aria-disabled');
         submit.removeAttribute('aria-busy');
       }
     }

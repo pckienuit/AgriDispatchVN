@@ -90,7 +90,7 @@
 .htx-sug--on { border-color: var(--ink); background: var(--surface-2); }
 .htx-bad { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
 .htx-member { display: inline-flex; align-items: center; gap: 4px; padding: 0 4px 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r-tag); background: var(--surface); font-weight: 600; }
-.htx-member .btn { min-height: 28px; padding: 0 8px; }
+.htx-member .btn { min-height: 32px; padding: 0 8px; }
 
 /* Hàng chờ đơn, vẽ ranh */
 .htx-wait { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--r-ctl); background: var(--surface); }

@@ -1,10 +1,16 @@
 // Shared-shell browser regression: responsive reachability, navigation, toast and focus.
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import console from 'node:console';
 import { createApp } from '../../src/app.js';
 import { open } from './cdp.mjs';
 
+const customShots = Boolean(process.env.SHELL_SHOTS);
+const shotsDir = process.env.SHELL_SHOTS || (await mkdtemp(join(tmpdir(), 'agri-shell-shots-')));
+await mkdir(shotsDir, { recursive: true });
 const server = createApp({ log: () => {} }).listen(0, '127.0.0.1');
 let browser;
 
@@ -47,7 +53,121 @@ try {
       assert.equal(layout.toast.top >= layout.head.bottom, true, `toast covers header at ${width}px`);
       assert.equal(layout.toast.bottom < layout.action.top, true, `toast overlaps fixed actions at ${width}px`);
     }
+    await browser.shot(join(shotsDir, `shot-${width}.png`));
   }
+
+  // Toast close button accessibility and aria-label
+  const toastMeta = await browser.ev(`(()=>{
+    const btn = document.querySelector('.toast__close');
+    return {
+      hasAriaLabel: btn ? btn.getAttribute('aria-label') : null,
+      rawAriaLabelAttr: btn ? btn.getAttribute('arialabel') : null,
+    };
+  })()`);
+  assert.equal(toastMeta.hasAriaLabel, 'Đóng thông báo', 'toast close button must have aria-label="Đóng thông báo"');
+  assert.equal(toastMeta.rawAriaLabelAttr, null, 'toast close button must not have raw arialabel attribute');
+
+  // Mobile toast placement: must not overlap first card at 390px
+  await browser.viewport(390, 740, true);
+  await browser.sleep(200);
+  const toastCardOverlap = await browser.ev(`(()=>{
+    document.scrollingElement.scrollTop = 0;
+    const toast = document.querySelector('.toast');
+    const firstCard = document.querySelector('.card');
+    const head = document.querySelector('.topbar');
+    const action = document.querySelector('.actionbar');
+    const tr = toast.getBoundingClientRect();
+    const cr = firstCard.getBoundingClientRect();
+    const hr = head.getBoundingClientRect();
+    const ar = action.getBoundingClientRect();
+    return {
+      toast: { top: tr.top, bottom: tr.bottom },
+      card: { top: cr.top, bottom: cr.bottom },
+      head: { bottom: hr.bottom },
+      action: { top: ar.top },
+      overlapsCard: !(tr.bottom <= cr.top || tr.top >= cr.bottom),
+      overlapsHead: tr.top < hr.bottom,
+      overlapsAction: tr.bottom > ar.top,
+    };
+  })()`);
+  assert.equal(toastCardOverlap.overlapsCard, false, `toast overlaps first content card at 390px: ${JSON.stringify(toastCardOverlap)}`);
+  assert.equal(toastCardOverlap.overlapsHead, false, `toast covers header at 390px: ${JSON.stringify(toastCardOverlap)}`);
+  assert.equal(toastCardOverlap.overlapsAction, false, `toast overlaps actionbar at 390px: ${JSON.stringify(toastCardOverlap)}`);
+  await browser.shot(join(shotsDir, 'shot-390-toast.png'));
+
+  // td.r stacked label alignment at 390px
+  const stackedTableAlign = await browser.ev(`(()=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    wrap.id = 'test-stacked-wrap';
+    wrap.innerHTML = '<table class="table table--stack"><tbody><tr><td class="r" data-label="Tổng tiền"><span>500.000 đ</span></td></tr></tbody></table>';
+    const container = document.querySelector('main .stack') || document.querySelector('#app');
+    container.prepend(wrap);
+    const td = wrap.querySelector('td.r');
+    const beforeAlign = getComputedStyle(td, '::before').textAlign;
+    return beforeAlign;
+  })()`);
+  await browser.shot(join(shotsDir, 'shot-390-table-stack.png'));
+  await browser.ev("document.querySelector('#test-stacked-wrap')?.remove()");
+  assert.equal(stackedTableAlign, 'left', 'td.r stacked data-label ::before should be text-align: left at 390px');
+
+  // Actionbar growth dynamically updates --bottom-reserve and --toast-bottom
+  const reserveDynamic = await browser.ev(`(async()=>{
+    const app = document.querySelector('.app');
+    const initialReserve = parseInt(getComputedStyle(app).getPropertyValue('--bottom-reserve') || '0', 10);
+    const initialToastBottom = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--toast-bottom') || '0', 10);
+    const actionIn = document.querySelector('.actionbar__in');
+    const extra = document.createElement('div');
+    extra.style.height = '64px';
+    extra.textContent = 'Extra line';
+    actionIn.appendChild(extra);
+    await new Promise(r => setTimeout(r, 200));
+    const grownReserve = parseInt(getComputedStyle(app).getPropertyValue('--bottom-reserve') || '0', 10);
+    const grownToastBottom = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--toast-bottom') || '0', 10);
+    actionIn.removeChild(extra);
+    return { initialReserve, grownReserve, initialToastBottom, grownToastBottom };
+  })()`);
+  assert.ok(reserveDynamic.grownReserve > reserveDynamic.initialReserve, `bottom reserve did not grow: ${JSON.stringify(reserveDynamic)}`);
+  assert.ok(reserveDynamic.grownToastBottom > reserveDynamic.initialToastBottom, `toast-bottom did not grow: ${JSON.stringify(reserveDynamic)}`);
+
+  // actions.js busy state and error msg focus
+  const actionsCheck = await browser.ev(`(async()=>{
+    const { apiButton } = await import('/v2/app/actions.js');
+    let release;
+    const hold = new Promise(r => { release = r; });
+    const wrapper = apiButton({
+      label: 'Kiểm tra thao tác',
+      run: async () => { await hold; throw new Error('Có lỗi xảy ra'); }
+    });
+    document.body.appendChild(wrapper);
+    const btn = wrapper.querySelector('button');
+    const msg = wrapper.querySelector('.msg');
+
+    btn.click();
+    await new Promise(r => setTimeout(r, 30));
+    const busyState = {
+      disabled: btn.disabled,
+      ariaDisabled: btn.getAttribute('aria-disabled'),
+      ariaBusy: btn.getAttribute('aria-busy'),
+      activeIsBody: document.activeElement === document.body,
+    };
+
+    release();
+    await new Promise(r => setTimeout(r, 60));
+    const errorState = {
+      msgTabIndex: msg.getAttribute('tabindex'),
+      msgHidden: msg.hidden,
+      activeIsMsg: document.activeElement === msg,
+      btnDisabled: btn.disabled,
+      btnAriaDisabled: btn.getAttribute('aria-disabled'),
+    };
+    wrapper.remove();
+    return { busyState, errorState };
+  })()`);
+  assert.equal(actionsCheck.busyState.disabled, false, 'apiButton must not set disabled=true during busy');
+  assert.equal(actionsCheck.busyState.ariaDisabled, 'true', 'apiButton must set aria-disabled="true" during busy');
+  assert.equal(actionsCheck.errorState.msgTabIndex, '-1', 'error msg must have tabindex="-1"');
+  assert.equal(actionsCheck.errorState.activeIsMsg, true, 'error msg must receive focus on error');
 
   await browser.viewport(390, 740, true);
   await browser.click('.tabbar__more');
@@ -86,6 +206,51 @@ try {
     assert.ok(tabs.sw <= tabs.cw + 1, `tabs require a horizontal swipe at ${width}px`);
     assert.ok(tabs.labels.every((l) => l.w >= 44 && l.h >= 44), `operator tap targets too small at ${width}px`);
   }
+
+  // htx-member button min-height must be 32px
+  const memberBtnMinH = await browser.ev(`(()=>{
+    const el = document.createElement('div');
+    el.className = 'htx-member';
+    el.innerHTML = '<span>Tên</span><button class="btn btn--secondary btn--sm">Gỡ</button>';
+    document.body.appendChild(el);
+    const btn = el.querySelector('.btn');
+    const minH = getComputedStyle(btn).minHeight;
+    el.remove();
+    return minH;
+  })()`);
+  assert.equal(memberBtnMinH, '32px', 'htx-member button min-height should be 32px');
+
+  // Same-route rerender restores structural focus, and cross-route navigation does not leak focus
+  await browser.ev(`(async()=>{ window.location.hash = '#/chung/C-01'; const { render } = await import('/v2/app/main.js'); await render(false); })()`);
+  await browser.waitFor("document.querySelector('input[name=phone]')");
+  const focusRestoreCheck = await browser.ev(`(async()=>{
+    const { render } = await import('/v2/app/main.js');
+    const phoneInput = document.querySelector('input[name=phone]');
+    phoneInput.focus();
+    const beforeRerender = document.activeElement === phoneInput;
+
+    // Same-route rerender with keepFocus=true
+    await render(true);
+    const afterSameRoute = document.activeElement === document.querySelector('input[name=phone]');
+
+    // Navigate to another route (cross-route)
+    window.location.hash = '#/chung/C-04';
+    return { beforeRerender, afterSameRoute };
+  })()`);
+  assert.equal(focusRestoreCheck.beforeRerender, true, 'phone input was not focused before rerender');
+  assert.equal(focusRestoreCheck.afterSameRoute, true, 'focus was not restored on same-route rerender');
+
+  await browser.waitFor("document.querySelector('h1')");
+  const crossRouteCheck = await browser.ev(`(()=>{
+    const active = document.activeElement;
+    return {
+      activeTag: active ? active.tagName : null,
+      activeName: active ? active.getAttribute('name') : null,
+      isMainOrH1: active ? (active.tagName === 'H1' || active.id === 'main') : false,
+    };
+  })()`);
+  assert.equal(crossRouteCheck.activeName, null, 'focus leaked from C-01 phone input across to C-04');
+
   assert.deepEqual(browser.errors, []);
   assert.deepEqual(browser.consoleErrors, []);
   console.log('shared-shell responsive/focus regression passed: 320, 390, 1024, 1440px');
@@ -97,5 +262,6 @@ try {
       server.close(resolve);
       server.closeAllConnections();
     });
+    if (!customShots) await rm(shotsDir, { recursive: true, force: true });
   }
 }

@@ -117,10 +117,82 @@ function makeCtx(route, screen, mySeq) {
   return ctx;
 }
 
-function paint(node, focusMain) {
-  ui.closeOverlays();
-  ui.dispose();
+let currentRouteKey = null;
+
+function captureFocusKey() {
+  const el = doc.activeElement;
+  if (!el || el === doc.body || !mount.contains(el)) return null;
+  const tag = el.tagName.toLowerCase();
+  const id = el.id || '';
+  const name = el.getAttribute('name') || '';
+  const type = el.getAttribute('type') || '';
+  const role = el.getAttribute('role') || '';
+  const value = (tag === 'input' && (type === 'radio' || type === 'checkbox')) ? el.value : '';
+  const text = (tag === 'button' || tag === 'a') ? (el.textContent || '').trim() : '';
+
+  let index;
+  const esc = (s) => (doc.defaultView?.CSS?.escape ? doc.defaultView.CSS.escape(s) : s);
+  if (name) {
+    const list = Array.from(mount.querySelectorAll(tag + '[name="' + esc(name) + '"]'));
+    index = list.indexOf(el);
+  } else {
+    const list = Array.from(mount.querySelectorAll(tag));
+    index = list.indexOf(el);
+  }
+
+  return { tag, id, name, type, role, value, text, index };
+}
+
+function restoreFocus(key) {
+  if (!key) return false;
+  let target = null;
+  const esc = (s) => (doc.defaultView?.CSS?.escape ? doc.defaultView.CSS.escape(s) : s);
+  if (key.id) {
+    try {
+      target = mount.querySelector('#' + esc(key.id));
+    } catch { /* bo qua loi selector */ }
+  }
+  if (!target && key.name) {
+    try {
+      const candidates = Array.from(mount.querySelectorAll(key.tag + '[name="' + esc(key.name) + '"]'));
+      if (key.value) {
+        target = candidates.find((c) => c.value === key.value);
+      }
+      if (!target && key.index >= 0 && candidates[key.index]) {
+        target = candidates[key.index];
+      }
+      if (!target && candidates.length === 1) {
+        target = candidates[0];
+      }
+    } catch { /* bo qua loi selector */ }
+  }
+  if (!target && key.role === 'alert') {
+    target = mount.querySelector('[role="alert"]:not([hidden])') || mount.querySelector('[role="alert"]');
+  }
+  if (!target && key.text && (key.tag === 'button' || key.tag === 'a')) {
+    const candidates = Array.from(mount.querySelectorAll(key.tag));
+    target = candidates.find((c) => (c.textContent || '').trim() === key.text);
+  }
+  if (!target) {
+    const candidates = Array.from(mount.querySelectorAll(key.tag));
+    if (key.index >= 0 && candidates[key.index]) {
+      target = candidates[key.index];
+    }
+  }
+  if (target && typeof target.focus === 'function') {
+    try {
+      target.focus({ preventScroll: true });
+      return doc.activeElement === target;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function paint(node, focusMain, restoreKey) {
   mount.replaceChildren(node);
+  if (restoreKey && restoreFocus(restoreKey)) return;
   if (focusMain) {
     const main = doc.getElementById('main');
     const heading = main && main.querySelector('h1');
@@ -151,14 +223,36 @@ async function render(keepFocus) {
     loc.replace(first ? first.href : url('chung', 'C-04', { loai: 'khong-tim-thay' }));
     return;
   }
-  if (route.kind === 'notfound') return paint(deny(route, 'khong-tim-thay', route.reason), focusMain);
+  if (route.kind === 'notfound') {
+    ui.closeOverlays();
+    ui.dispose();
+    currentRouteKey = null;
+    return paint(deny(route, 'khong-tim-thay', route.reason), focusMain);
+  }
   const screen = registry.get(route.code);
-  if (!screen || !codeAllowedInRole(route.code, route.role.slug)) return paint(deny(route, 'khong-tim-thay', `Màn ${route.code} chưa có trong vai trò ${route.role.name}`), focusMain);
+  if (!screen || !codeAllowedInRole(route.code, route.role.slug)) {
+    ui.closeOverlays();
+    ui.dispose();
+    currentRouteKey = null;
+    return paint(deny(route, 'khong-tim-thay', `Màn ${route.code} chưa có trong vai trò ${route.role.name}`), focusMain);
+  }
   if (!PUBLIC.has(route.code) && !session.token) {
     loc.replace(url('chung', 'C-01', { tiep: hash.slice(1) }));
     return;
   }
-  if (route.role.apiRole && !session.user?.roles?.includes(route.role.apiRole)) return paint(deny(route, 'khong-co-quyen'), focusMain);
+  if (route.role.apiRole && !session.user?.roles?.includes(route.role.apiRole)) {
+    ui.closeOverlays();
+    ui.dispose();
+    currentRouteKey = null;
+    return paint(deny(route, 'khong-co-quyen'), focusMain);
+  }
+
+  const routeKey = route.role ? `${route.role.slug}:${route.code}` : null;
+  const isSameRoute = Boolean(routeKey && routeKey === currentRouteKey);
+  const restoreKey = (keepFocus && isSameRoute) ? captureFocusKey() : null;
+
+  ui.closeOverlays();
+  ui.dispose();
 
   const ctx = makeCtx(route, screen, mySeq);
   let body;
@@ -167,16 +261,20 @@ async function render(keepFocus) {
     if (out && typeof out.then === 'function') {
       if (!keepFocus) paint(frame(route, screen, ui.loading('Đang tải dữ liệu từ máy chủ'), null), focusMain);
       body = await out;
+      if (mySeq !== seq) return;
+      if (!keepFocus) ui.dispose();
     } else body = out;
   } catch (error) {
     if (mySeq !== seq) return;
     body = ui.errorState({ title: 'Chưa tải được màn này', text: errorText(error), retry: () => render(true) });
   }
   if (mySeq !== seq) return;
-  paint(frame(route, screen, body, ctx.getAction()), focusMain);
+  paint(frame(route, screen, body, ctx.getAction()), focusMain, restoreKey);
+  currentRouteKey = routeKey;
   ctx.mounted = true;
 }
 
+export { render };
 globalThis.addEventListener('hashchange', () => render(false));
 globalThis.addEventListener('offline', () => ui.toast('Mất kết nối mạng. Thao tác chưa được gửi; thử lại khi có mạng.', 'error'));
 render(false).catch((error) => {

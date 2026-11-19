@@ -26,6 +26,7 @@
 @media (min-width: 761px) {
   .toasts {
     top: calc(var(--toast-top, 56px) + var(--sp-3, 12px));
+    bottom: auto;
     right: var(--sp-4, 16px);
     left: auto;
     transform: none;
@@ -81,6 +82,10 @@
 }
 
 @media (max-width: 760px) {
+  .toasts {
+    top: auto;
+    bottom: calc(var(--toast-bottom, 0px) + var(--sp-4, 16px));
+  }
   .app--desk {
     --topbar-h: 56px;
     font-size: var(--fs, 18px);
@@ -456,6 +461,7 @@
     content: attr(data-label);
     font-weight: 600;
     color: var(--ink-2);
+    text-align: left;
     flex: 1 1 auto;
     min-width: 0;
     max-width: 100%;
