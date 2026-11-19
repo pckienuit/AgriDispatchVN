@@ -23,16 +23,43 @@
   }
 }
 
+@media (min-width: 761px) {
+  .toasts {
+    top: calc(var(--toast-top, 56px) + var(--sp-3, 12px));
+    right: var(--sp-4, 16px);
+    left: auto;
+    transform: none;
+    width: min(360px, calc(100% - 32px));
+  }
+}
+
 @media (max-width: 1100px) and (min-width: 761px) {
   .app--desk {
     --topbar-h: 96px;
   }
   .topbar__in {
     flex-wrap: wrap;
-    padding: 0 56px 0 16px;
+    padding: 0 calc(var(--sp-4, 16px) + var(--demo-inset, 0px)) 0 var(--sp-4, 16px);
     min-height: 96px;
     align-content: center;
     gap: var(--sp-2, 8px) var(--sp-4, 16px);
+  }
+  .brand {
+    margin-right: auto;
+    min-width: 0;
+  }
+  .topbar__who {
+    min-width: 0;
+    max-width: 55%;
+  }
+  .topbar__who .row {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 2px var(--sp-2, 8px);
+  }
+  .topbar__who .row > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .topbar .nav {
     width: 100%;
@@ -58,6 +85,22 @@
     --topbar-h: 56px;
     font-size: var(--fs, 18px);
   }
+  .topbar__in {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-1, 4px) var(--sp-3, 12px);
+    padding: var(--sp-2, 8px) calc(var(--sp-3, 12px) + var(--demo-inset, 0px)) var(--sp-2, 8px) var(--sp-3, 12px);
+    min-height: 56px;
+  }
+  .topbar__back {
+    margin-right: 0;
+    padding: 0 var(--sp-2, 8px);
+    min-height: var(--ctl-h-sm, 44px);
+  }
+  .brand {
+    margin-right: auto;
+    min-width: 0;
+  }
   .topbar .nav {
     display: none !important;
   }
@@ -65,10 +108,23 @@
     display: flex !important;
   }
   .topbar__who {
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.35;
+  }
+  .topbar__who .row {
+    flex-wrap: wrap;
+    width: auto;
+    gap: 2px var(--sp-2, 8px);
+  }
+  .topbar__who .row > span {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
   }
   .app--desk main {
     padding-bottom: var(--bottom-reserve, var(--sp-6, 32px));
@@ -82,18 +138,6 @@
   .app--desk.app--has-action.app--has-tab main {
     padding-bottom: var(--bottom-reserve, calc(var(--strip, 0px) + 160px));
   }
-  .app--mobile main {
-    padding-bottom: var(--bottom-reserve, var(--sp-4, 16px));
-  }
-  .app--mobile.app--has-tab main {
-    padding-bottom: var(--bottom-reserve, calc(var(--strip, 0px) + 80px));
-  }
-  .app--mobile.app--has-action main {
-    padding-bottom: var(--bottom-reserve, calc(var(--strip, 0px) + 96px));
-  }
-  .app--mobile.app--has-action.app--has-tab main {
-    padding-bottom: var(--bottom-reserve, calc(var(--strip, 0px) + 160px));
-  }
 }
 
 /* 2. Nút Thêm và Bảng trượt đáy */
@@ -102,20 +146,23 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 4px;
   min-height: 64px;
-  padding: var(--sp-2, 8px) 2px;
+  min-width: 0;
+  padding: 6px 4px;
   color: var(--ink-2);
   background: transparent;
   border: 0;
-  font-size: var(--fs-xs, 12px);
+  font-size: var(--t-12, 12px);
   font-weight: 600;
   line-height: 1.2;
+  text-align: center;
   cursor: pointer;
   font-family: inherit;
 }
 .tabbar__more .ph {
-  font-size: 26px;
+  font-size: 24px;
+  flex: none;
 }
 .tabbar__more[aria-current="page"] {
   color: var(--accent-hover);
@@ -286,19 +333,44 @@
 
 /* Màn hẹp: tóm tắt và cụm nút được xuống dòng, cụm nút chiếm đủ ngang để nhãn dài không tràn */
 @media (max-width: 760px) {
+  .actionbar {
+    max-width: 100%;
+  }
   .actionbar__in {
     flex-wrap: wrap;
+  }
+  .actionbar__info {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .actionbar__actions {
     flex: 1 1 auto;
     justify-content: flex-end;
+    min-width: 0;
   }
   .actionbar__actions > .btn--lg,
   .actionbar__actions > .action {
     flex: 1 1 auto;
+    min-width: 0;
   }
   .actionbar__actions .action .btn {
     width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .wrap .btn,
+  .mbody .btn,
+  .actionbar .btn,
+  .modal .btn {
+    white-space: normal;
+    text-align: center;
+    line-height: 1.25;
+    padding-top: var(--sp-2, 8px);
+    padding-bottom: var(--sp-2, 8px);
+  }
+  .stepper li {
+    font-size: var(--t-12, 12px);
   }
 }
 
