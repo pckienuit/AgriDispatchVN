@@ -11,7 +11,7 @@ const valid = {
 };
 
 test('job input accepts a valid window and normalises instants to UTC ISO', () => {
-  assert.deepEqual(validateJobInput({ ...valid, capacity: MAX_JOB_CAPACITY }), { ...valid, capacity: MAX_JOB_CAPACITY, startAt: '2026-12-01T01:00:00.000Z', endAt: '2026-12-01T05:00:00.000Z' });
+  assert.deepEqual(validateJobInput({ ...valid, capacity: MAX_JOB_CAPACITY }), { ...valid, capacity: MAX_JOB_CAPACITY, startAt: '2026-12-01T01:00:00.000Z', endAt: '2026-12-01T05:00:00.000Z', wageType: null, wageAmountVnd: null, machineType: null, requiredSkills: [] });
 });
 
 test('job input refuses unknown keys, bad capacity, non-UTC or impossible dates and empty windows', () => {

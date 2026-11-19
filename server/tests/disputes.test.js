@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createDisputeRouter, validateMediatorInput, validateOpenInput, validateResponseInput } from '../src/disputes.js';
+import {
+  createDisputeRouter,
+  validateEscalateInput,
+  validateHtxMediatorInput,
+  validateMediatorInput,
+  validateOpenInput,
+  validateResponseInput,
+} from '../src/disputes.js';
 
 test('router factory fails closed without pool or authenticate', () => {
   assert.throws(() => createDisputeRouter({ authenticate() {} }), TypeError);
@@ -45,4 +52,37 @@ test('mediator input is one UUID, normalised to lower case', () => {
   }
   assert.throws(() => validateMediatorInput({ mediatorId: '10000000-0000-4000-8000-000000000001', role: 'admin' }),
     { code: 'UNKNOWN_FIELD' });
+});
+
+test('htx mediator input accepts empty object for self-claim or one UUID', () => {
+  assert.equal(validateHtxMediatorInput(undefined), null);
+  assert.equal(validateHtxMediatorInput({}), null);
+  assert.equal(validateHtxMediatorInput({ mediatorId: '10000000-0000-4000-8000-00000000ABCD' }),
+    '10000000-0000-4000-8000-00000000abcd');
+  for (const body of [null, [], 'text']) {
+    assert.throws(() => validateHtxMediatorInput(body), { code: 'INVALID_BODY' });
+  }
+  for (const mediatorId of ['', 'not-a-uuid', 12, null]) {
+    assert.throws(() => validateHtxMediatorInput({ mediatorId }), { code: 'VALIDATION_FAILED' });
+  }
+  assert.throws(() => validateHtxMediatorInput({ mediatorId: '10000000-0000-4000-8000-000000000001', level: 'HTX' }),
+    { code: 'UNKNOWN_FIELD' });
+});
+
+test('escalate input requires trimmed reason of 1 to 2000 code points and optional known conflictType', () => {
+  assert.deepEqual(validateEscalateInput({ reason: '  HTX co lien quan  ' }),
+    { reason: 'HTX co lien quan', conflictType: null });
+  assert.deepEqual(validateEscalateInput({ reason: '  Thanh vien HTX  ', conflictType: 'AFFILIATION_CONFLICT' }),
+    { reason: 'Thanh vien HTX', conflictType: 'AFFILIATION_CONFLICT' });
+  for (const reason of ['', '   ', 42, null, undefined, 'x'.repeat(2001), '\u{1F33E}'.repeat(2001)]) {
+    assert.throws(() => validateEscalateInput({ reason }), { code: 'VALIDATION_FAILED' });
+  }
+  assert.equal(validateEscalateInput({ reason: '\u{1F33E}'.repeat(2000) }).reason.length, 4000);
+  for (const conflictType of ['', 'UNKNOWN_CONFLICT', 12, null]) {
+    assert.throws(() => validateEscalateInput({ reason: 'Synthetic', conflictType }), { code: 'VALIDATION_FAILED' });
+  }
+  assert.throws(() => validateEscalateInput({ reason: 'Synthetic', mediatorId: 'x' }), { code: 'UNKNOWN_FIELD' });
+  for (const body of [undefined, null, [], 'text']) {
+    assert.throws(() => validateEscalateInput(body), { code: 'INVALID_BODY' });
+  }
 });

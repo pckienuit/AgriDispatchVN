@@ -3,6 +3,7 @@ import {Buffer} from 'node:buffer';
 import {createHash,randomUUID} from 'node:crypto';
 import {inspectEvidenceImage} from './evidence-image.js';
 import {parsePagination} from './catalog.js';
+import {isActiveMediatorIndependent} from './disputes.js';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail=(status,code)=>Object.assign(new Error(code),{status,code});
@@ -17,12 +18,12 @@ async function transaction(pool,work){
   finally{db.release(broken);}
 }
 async function caseAccess(db,caseId,actor,{write=false,lock=false}={}){
-  const {rows}=await db.query(`SELECT d.* FROM dispatch.disputes d WHERE d.id=$1 AND
-    (d.claimant_id=$2 OR d.respondent_id=$2 OR (d.mediator_id=$2 AND EXISTS
-      (SELECT 1 FROM account.user_roles r WHERE r.user_id=$2 AND r.role='admin'))) ${lock?'FOR UPDATE OF d':''}`,[caseId,actor.id]);
+  const {rows}=await db.query(`SELECT d.* FROM dispatch.disputes d WHERE d.id=$1 ${lock?'FOR UPDATE OF d':''}`,[caseId]);
   const row=rows[0];if(!row)throw fail(404,'NOT_FOUND');
+  const isParty=[row.claimant_id,row.respondent_id].includes(actor.id);
+  if(!isParty&&!(await isActiveMediatorIndependent(db,row,actor.id)))throw fail(404,'NOT_FOUND');
   if(write){
-    if(![row.claimant_id,row.respondent_id].includes(actor.id))throw fail(403,'FORBIDDEN');
+    if(!isParty)throw fail(403,'FORBIDDEN');
     if(row.status!=='OPEN')throw fail(409,'DISPUTE_NOT_OPEN');
   }
   return row;

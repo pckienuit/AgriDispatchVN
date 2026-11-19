@@ -58,6 +58,7 @@ async function call(method, path, actor, payload) {
 const post = (path, payload, actor) => call('POST', path, actor, payload);
 const get = (path, actor) => call('GET', path, actor);
 const ready = (bookingId, value = ALL_TRUE, actor = FARMER) => post(`/api/bookings/${bookingId}/readiness`, value, actor);
+const inspect = (bookingId, payload = { result: 'PASSED' }, actor = COOP) => post(`/api/bookings/${bookingId}/inspections`, payload, actor);
 const start = (packageId, actor = OPERATOR) => post(`/api/packages/${packageId}/shifts/start`, undefined, actor);
 const shiftAction = (shiftId, action, payload, actor = OPERATOR) => post(`/api/shifts/${shiftId}/${action}`, payload, actor);
 
@@ -110,7 +111,10 @@ async function fixture({ bookings = 2, claim = true } = {}) {
 
 async function startedFixture(options) {
   const f = await fixture(options);
-  for (const bookingId of f.bookingIds) assert.equal((await ready(bookingId)).status, 200);
+  for (const bookingId of f.bookingIds) {
+    assert.equal((await ready(bookingId)).status, 200);
+    assert.equal((await inspect(bookingId)).status, 201);
+  }
   const started = await start(f.packageId);
   assert.equal(started.status, 201);
   return { ...f, shiftId: started.body.shift.id };
@@ -211,6 +215,10 @@ test('start needs the assigned operator, a claimed package and every booking rea
   assert.equal((await ready(b1, { drained: true, mature: true, intakeReady: false })).status, 200);
   assert.equal((await start(f.packageId)).body.error.code, 'READINESS_INCOMPLETE');
   assert.equal((await ready(b1)).status, 200);
+  assert.equal((await start(f.packageId)).body.error.code, 'INSPECTION_INCOMPLETE');
+  assert.equal((await inspect(b0)).status, 201);
+  assert.equal((await start(f.packageId)).body.error.code, 'INSPECTION_INCOMPLETE');
+  assert.equal((await inspect(b1)).status, 201);
   assert.equal((await start(f.packageId)).status, 201);
   assert.equal(await count('SELECT count(*)::int AS n FROM dispatch.shifts WHERE package_id = $1', [f.packageId]), 1);
 
@@ -223,7 +231,10 @@ test('start needs the assigned operator, a claimed package and every booking rea
 
 test('competing starts create exactly one shift and readiness freezes once started', async () => {
   const f = await fixture();
-  for (const bookingId of f.bookingIds) assert.equal((await ready(bookingId)).status, 200);
+  for (const bookingId of f.bookingIds) {
+    assert.equal((await ready(bookingId)).status, 200);
+    assert.equal((await inspect(bookingId)).status, 201);
+  }
   const races = await Promise.all([start(f.packageId), start(f.packageId)]);
   assert.deepEqual(races.map((r) => r.status).sort(), [201, 409]);
   assert.equal(races.find((r) => r.status === 409).body.error.code, 'SHIFT_ALREADY_STARTED');

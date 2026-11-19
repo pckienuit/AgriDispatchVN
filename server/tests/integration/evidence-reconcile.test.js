@@ -108,11 +108,19 @@ async function openCase(pool, index) {
   return (await pool.query("INSERT INTO dispatch.disputes(booking_id,claimant_id,respondent_id,reason,status) VALUES($1,$2,$3,'QUALITY','OPEN') RETURNING id", [booking, OWNER, PROVIDER])).rows[0].id;
 }
 
-// Mirrors the close-unresolved statements in server/src/remedies.js inside one transaction.
+// Mirrors explicit escalation + close-unresolved in server/src/remedies.js inside one transaction.
 async function closeCase(pool, dispute) {
   const db = await pool.connect();
   try {
     await db.query('BEGIN');
+    await db.query(
+      "INSERT INTO dispatch.dispute_events(dispute_id,event_type,actor_id,data) VALUES($1,'MEDIATION_ESCALATED',$2,$3::jsonb)",
+      [dispute, OWNER, JSON.stringify({ reason: 'Synthetic escalation', conflictType: null, previousMediatorId: null })],
+    );
+    await db.query(
+      "UPDATE dispatch.disputes SET mediation_level='ADMIN',mediator_id=NULL,escalated_at=clock_timestamp(),escalated_by=$2,escalation_reason='Synthetic escalation' WHERE id=$1",
+      [dispute, OWNER],
+    );
     await db.query("INSERT INTO dispatch.remedy_events(dispute_id,actor_id,event_type,version,details) VALUES($1,$2,'CLOSED_UNRESOLVED',NULL,$3)", [dispute, OWNER, 'Synthetic closure']);
     await db.query("UPDATE dispatch.disputes SET status='CLOSED_UNRESOLVED',closed_at=now(),closure_reason=$2 WHERE id=$1", [dispute, 'Synthetic closure']);
     await db.query('COMMIT');

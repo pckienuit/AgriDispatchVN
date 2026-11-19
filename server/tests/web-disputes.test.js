@@ -8,7 +8,9 @@ import {
   disputeInput,
   disputesRoute,
   errorMessage,
+  escalateInput,
   freezeNotice,
+  levelLabel,
   proposalInput,
   readDetail,
   readList,
@@ -27,7 +29,8 @@ const PROVIDER = id(12);
 const MEDIATOR = id(20);
 const NEW_MEDIATOR = id(21);
 const ADMIN_OUTSIDER = id(30);
-const DISPUTE = { id: id(1), bookingId: id(2), claimantId: OWNER, respondentId: PROVIDER, reason: 'QUALITY', status: 'OPEN', mediatorId: MEDIATOR, createdAt: NOW };
+const DISPUTE = { id: id(1), bookingId: id(2), claimantId: OWNER, respondentId: PROVIDER, reason: 'QUALITY', status: 'OPEN', mediatorId: MEDIATOR, mediationLevel: 'ADMIN', createdAt: NOW };
+const HTX_DISPUTE = { ...DISPUTE, mediatorId: null, mediationLevel: 'HTX' };
 const EVENT = { sequence: 1, type: 'DISPUTE_OPENED', actorId: OWNER, data: { reason: 'QUALITY', details: 'Đất chưa phẳng' }, createdAt: NOW };
 const OLD = { version: 1, text: 'Đo lại diện tích.', mediatorId: MEDIATOR, createdAt: NOW, consents: [] };
 const LATEST = { version: 2, text: 'Chia đôi chi phí đo lại.', mediatorId: MEDIATOR, createdAt: NOW, consents: [{ actorId: OWNER, at: '2026-11-20T10:00:00.123456+07:00' }] };
@@ -63,11 +66,12 @@ test('dispute form input is trimmed, bounded to 2000 code points and uses the AP
   assert.equal(disputeInput({ reason: 'OTHER', details: 42 }).payload, null);
 });
 
-test('response, proposal and closure text share the same bounds and payload shape', () => {
+test('response, proposal, escalation and closure text share the same bounds and payload shape', () => {
   assert.deepEqual(responseInput(' Đã làm đủ ca '), { error: null, payload: { text: 'Đã làm đủ ca' } });
   assert.deepEqual(proposalInput('Chia đôi chi phí.'), { error: null, payload: { text: 'Chia đôi chi phí.' } });
   assert.deepEqual(closeInput('Không đạt phương án.'), { error: null, payload: { reason: 'Không đạt phương án.' } });
-  for (const fn of [responseInput, proposalInput, closeInput]) {
+  assert.deepEqual(escalateInput('Cần quản trị viên độc lập.'), { error: null, payload: { reason: 'Cần quản trị viên độc lập.' } });
+  for (const fn of [responseInput, proposalInput, closeInput, escalateInput]) {
     assert.ok(fn('   ').error);
     assert.ok(fn('x'.repeat(2001)).error);
     assert.ok(fn(null).error);
@@ -75,12 +79,15 @@ test('response, proposal and closure text share the same bounds and payload shap
   }
 });
 
-test('status labels map exactly the four closure states and reject anything else', () => {
+test('status and level labels map known values and reject anything else', () => {
   assert.equal(statusLabel('OPEN'), 'Đang mở');
   assert.equal(statusLabel('RESOLVED'), 'Đã giải quyết');
   assert.equal(statusLabel('CLOSED_UNRESOLVED'), 'Đóng chưa giải quyết');
   assert.equal(statusLabel('CLOSED'), 'Đã đóng');
   for (const status of ['PAID', 'open', '', undefined, 'constructor']) assert.equal(statusLabel(status), null, String(status));
+  assert.equal(levelLabel('HTX'), 'Cấp HTX');
+  assert.equal(levelLabel('ADMIN'), 'Cấp quản trị');
+  for (const level of ['COOP', 'htx', '', undefined, 'constructor']) assert.equal(levelLabel(level), null, String(level));
 });
 
 test('freeze notice says open and unresolved cases block financial writes, and resolution does not refund', () => {
@@ -109,8 +116,11 @@ test('case list reader accepts the API page and rejects unknown statuses or bad 
   }
 });
 
-test('case detail reader keeps events in order and rejects unknown event types', () => {
+test('case detail reader keeps events in order, accepts escalations and rejects unknown event types', () => {
   assert.deepEqual(readDetail({ dispute: DISPUTE, events: [EVENT] }), { dispute: DISPUTE, events: [EVENT] });
+  const esc = { sequence: 2, actorId: ADMIN_OUTSIDER, reason: 'Chuyển cấp hòa giải', conflictType: null, previousMediatorId: null, createdAt: NOW };
+  assert.deepEqual(readDetail({ dispute: DISPUTE, events: [EVENT], escalations: [esc] }), { dispute: DISPUTE, events: [EVENT], escalations: [esc] });
+  assert.equal(readDetail({ dispute: DISPUTE, events: [EVENT], escalations: [{ ...esc, reason: 42 }] }), null);
   assert.equal(readDetail({ dispute: DISPUTE, events: [{ ...EVENT, type: 'REMEDY_EXECUTED' }] }), null);
   assert.equal(readDetail({ dispute: { ...DISPUTE, status: 'CLOSED' }, events: [] }).dispute.status, 'CLOSED');
   assert.equal(readDetail({ dispute: DISPUTE, events: 'none' }), null);
@@ -128,26 +138,31 @@ test('proposal reader accepts microsecond consent times and refuses a mismatched
 });
 
 test('reader for review queue and mediator directory accept only the agreed shapes', () => {
-  const review = { items: [{ id: id(1), bookingId: id(2), reason: 'PAYMENT', status: 'OPEN' }], limit: 20, offset: 0 };
+  const review = { items: [{ id: id(1), bookingId: id(2), reason: 'PAYMENT', status: 'OPEN', mediationLevel: 'HTX' }], limit: 20, offset: 0 };
   assert.deepEqual(readReviewList(review), review);
   assert.equal(readReviewList({ items: [{ id: id(1), bookingId: id(2), reason: 'PAYMENT', status: 'PAID' }], limit: 20, offset: 0 }), null);
+  assert.equal(readReviewList({ items: [{ id: id(1), bookingId: id(2), reason: 'PAYMENT', status: 'OPEN', mediationLevel: 'OTHER' }], limit: 20, offset: 0 }), null);
   assert.deepEqual(readMediators({ items: [{ id: NEW_MEDIATOR, name: 'Quản trị A' }] }), { items: [{ id: NEW_MEDIATOR, name: 'Quản trị A' }] });
   assert.equal(readMediators({ items: [{ id: NEW_MEDIATOR, name: '' }] }), null);
   assert.equal(readMediators({ items: [{ id: 'x', name: 'A' }] }), null);
 });
 
-test('actions follow party identity and the OPEN state, never the role label alone', () => {
-  assert.deepEqual(disputeActions(provider, DISPUTE), { respond: true, propose: false, close: false, assign: false });
-  assert.deepEqual(disputeActions(owner, DISPUTE), { respond: false, propose: false, close: false, assign: false });
-  assert.deepEqual(disputeActions(mediator, DISPUTE), { respond: false, propose: true, close: true, assign: true });
-  assert.deepEqual(disputeActions(outsider, DISPUTE), { respond: false, propose: false, close: false, assign: true });
-  assert.deepEqual(disputeActions({ id: id(31), roles: ROLES_ADMIN }, { ...DISPUTE, mediatorId: null }), { respond: false, propose: false, close: false, assign: true }, 'unassigned case: admin may pick');
-  assert.deepEqual(disputeActions({ id: id(32), roles: ROLES_ADMIN }, { ...DISPUTE, mediatorId: NEW_MEDIATOR }), { respond: false, propose: false, close: false, assign: true }, 'replaced mediator loses propose and close');
-  assert.deepEqual(disputeActions({ id: OWNER, roles: ['farmer', 'admin'] }, DISPUTE), { respond: false, propose: false, close: false, assign: false }, 'admin party cannot pick mediator');
-  assert.deepEqual(disputeActions({ id: MEDIATOR, roles: ['farmer'] }, DISPUTE), { respond: false, propose: false, close: false, assign: false }, 'mediator id without admin role');
+test('actions follow party identity, mediation level and the OPEN state, never the role label alone', () => {
+  assert.deepEqual(disputeActions(provider, DISPUTE), { respond: true, propose: false, close: false, escalate: false, assign: false });
+  assert.deepEqual(disputeActions(owner, DISPUTE), { respond: false, propose: false, close: false, escalate: false, assign: false });
+  assert.deepEqual(disputeActions(mediator, DISPUTE), { respond: false, propose: true, close: true, escalate: false, assign: true });
+  assert.deepEqual(disputeActions(outsider, DISPUTE), { respond: false, propose: false, close: false, escalate: false, assign: true });
+  assert.deepEqual(disputeActions({ id: id(31), roles: ROLES_ADMIN }, { ...DISPUTE, mediatorId: null }), { respond: false, propose: false, close: false, escalate: false, assign: true }, 'unassigned ADMIN case: admin may pick');
+  assert.deepEqual(disputeActions({ id: id(32), roles: ROLES_ADMIN }, { ...DISPUTE, mediatorId: NEW_MEDIATOR }), { respond: false, propose: false, close: false, escalate: false, assign: true }, 'replaced mediator loses propose and close');
+  assert.deepEqual(disputeActions(outsider, HTX_DISPUTE), { respond: false, propose: false, close: false, escalate: true, assign: false }, 'HTX case requires escalation before assignment');
+  assert.deepEqual(disputeActions(mediator, { ...DISPUTE, mediationLevel: 'HTX' }), { respond: false, propose: false, close: false, escalate: true, assign: false }, 'admin cannot mediate or assign while HTX');
+  assert.deepEqual(disputeActions({ id: OWNER, roles: ['farmer', 'admin'] }, HTX_DISPUTE), { respond: false, propose: false, close: false, escalate: false, assign: false }, 'admin party cannot triage HTX case');
+  assert.deepEqual(disputeActions({ id: OWNER, roles: ['farmer', 'admin'] }, DISPUTE), { respond: false, propose: false, close: false, escalate: false, assign: false }, 'admin party cannot pick mediator');
+  assert.deepEqual(disputeActions({ id: MEDIATOR, roles: ['farmer'] }, DISPUTE), { respond: false, propose: false, close: false, escalate: false, assign: false }, 'mediator id without admin role');
   const closed = { ...DISPUTE, status: 'RESOLVED' };
-  assert.deepEqual(disputeActions(mediator, closed), { respond: false, propose: false, close: false, assign: false });
-  assert.deepEqual(disputeActions(provider, closed), { respond: false, propose: false, close: false, assign: false });
+  assert.deepEqual(disputeActions(mediator, closed), { respond: false, propose: false, close: false, escalate: false, assign: false });
+  assert.deepEqual(disputeActions(provider, closed), { respond: false, propose: false, close: false, escalate: false, assign: false });
+  assert.deepEqual(disputeActions(outsider, { ...HTX_DISPUTE, status: 'CLOSED' }), { respond: false, propose: false, close: false, escalate: false, assign: false });
 });
 
 test('consent state is offered only to a party on the latest version under the current mediator', () => {
@@ -164,6 +179,8 @@ test('consent state is offered only to a party on the latest version under the c
 test('error copy maps known codes, marks uncertain writes and never echoes raw codes', () => {
   assert.match(errorMessage({ code: 'STALE_VERSION', status: 409 }), /Tải lại/);
   assert.match(errorMessage({ code: 'DISPUTE_OPEN', status: 409 }), /đang mở/);
+  assert.match(errorMessage({ code: 'ESCALATION_REQUIRED', status: 409 }), /chuyển cấp/i);
+  assert.match(errorMessage({ code: 'ALREADY_ESCALATED', status: 409 }), /chuyển lên cấp quản trị/i);
   assert.match(errorMessage({ code: 'NOT_FOUND', status: 404 }), /không có quyền/);
   assert.match(errorMessage({ code: 'UNAUTHENTICATED', status: 401 }), /đăng nhập/i);
   assert.match(errorMessage({ code: 'NETWORK', status: 0, uncertain: true }), /chưa coi|Tải lại/);

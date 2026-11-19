@@ -326,6 +326,9 @@ test('full cross-service HTTP flow runs end-to-end under account_runtime and boo
   assert.equal(mediators.status, 200, JSON.stringify(mediators.body));
   assert.ok(mediators.body.items.some((m) => m.id === adminUser.id));
 
+  const escalated = await reqJson(bookingUrl, 'POST', `/api/disputes/${disputeId}/escalate`, { reason: 'Chuyển cấp hòa giải' }, farmer.token);
+  assert.equal(escalated.status, 200, JSON.stringify(escalated.body));
+
   const assigned = await reqJson(bookingUrl, 'POST', `/api/disputes/${disputeId}/mediator`, { mediatorId: adminUser.id }, adminToken);
   assert.equal(assigned.status, 200, JSON.stringify(assigned.body));
 });

@@ -41,6 +41,7 @@ const LABEL = {
   'dispute.DISPUTE_OPENED': 'Tranh chấp đã được mở',
   'dispute.RESPONSE_ADDED': 'Đã có phản hồi trong tranh chấp',
   'dispute.MEDIATOR_ASSIGNED': 'Người hòa giải đã được phân công',
+  'dispute.MEDIATION_ESCALATED': 'Tranh chấp đã được chuyển cấp hòa giải',
   'remedy.PROPOSED': 'Phương án xử lý đã được đề xuất',
   'remedy.CONSENTED': 'Một bên đã đồng ý phương án xử lý',
 };
@@ -53,14 +54,14 @@ const OJ = `#job/${OTHER_JOB}`;
 // Ties are inserted on purpose: 08:50 booking vs dispute, 08:40 two recruitment rows, 08:30 recruitment vs shift.
 const EXPECTED = {
   [FARMER]: [
-    ['remedy.CONSENTED', D], ['remedy.PROPOSED', D], ['dispute.MEDIATOR_ASSIGNED', D], ['dispute.RESPONSE_ADDED', D],
-    ['booking.BOOKING_ASSIGNED', B], ['dispute.DISPUTE_OPENED', D], ['booking.BOOKING_GROUPED', B],
-    ['booking.COORDINATOR_ASSIGNED', B], ['booking.BOOKING_REQUESTED', B],
+    ['remedy.CONSENTED', D], ['remedy.PROPOSED', D], ['dispute.MEDIATOR_ASSIGNED', D], ['dispute.MEDIATION_ESCALATED', D],
+    ['dispute.RESPONSE_ADDED', D], ['booking.BOOKING_ASSIGNED', B], ['dispute.DISPUTE_OPENED', D],
+    ['booking.BOOKING_GROUPED', B], ['booking.COORDINATOR_ASSIGNED', B], ['booking.BOOKING_REQUESTED', B],
   ],
   [PROVIDER]: [
-    ['remedy.CONSENTED', D], ['remedy.PROPOSED', D], ['dispute.MEDIATOR_ASSIGNED', D], ['dispute.RESPONSE_ADDED', D],
-    ['shift.SHIFT_PAUSED', S], ['recruitment.offer.accepted', J], ['dispute.DISPUTE_OPENED', D],
-    ['recruitment.offer.created', J], ['recruitment.application.offered', J],
+    ['remedy.CONSENTED', D], ['remedy.PROPOSED', D], ['dispute.MEDIATOR_ASSIGNED', D], ['dispute.MEDIATION_ESCALATED', D],
+    ['dispute.RESPONSE_ADDED', D], ['shift.SHIFT_PAUSED', S], ['recruitment.offer.accepted', J],
+    ['dispute.DISPUTE_OPENED', D], ['recruitment.offer.created', J], ['recruitment.application.offered', J],
     ['recruitment.application.created', J], ['shift.SHIFT_STARTED', S], ['recruitment.job.created', J],
   ],
   [OPERATOR]: [
@@ -70,7 +71,7 @@ const EXPECTED = {
   [COOP]: [['shift.SHIFT_PAUSED', S], ['shift.SHIFT_STARTED', S]],
   [MEDIATOR]: [
     ['remedy.CONSENTED', D], ['remedy.PROPOSED', D], ['dispute.MEDIATOR_ASSIGNED', D],
-    ['dispute.RESPONSE_ADDED', D], ['dispute.DISPUTE_OPENED', D],
+    ['dispute.MEDIATION_ESCALATED', D], ['dispute.RESPONSE_ADDED', D], ['dispute.DISPUTE_OPENED', D],
   ],
   [ADMIN_SEPARATE]: [],
   [OTHER_FARMER]: [],
@@ -125,6 +126,15 @@ async function fixtures(pool) {
   await pool.query(`INSERT INTO dispatch.packages (id, coop_id, service_id, locality, window_start_at, window_end_at, status, provider_id, machine_id, operator_id)
     VALUES ($1, $2, $3, 'Demo', $4, $5, 'CLAIMED', $6, $7, $8)`, [PACKAGE, COOP, SERVICE, at('08:00'), at('12:00'), PROVIDER, MACHINE, OPERATOR]);
   await pool.query('INSERT INTO dispatch.package_bookings (package_id, booking_id) VALUES ($1, $2)', [PACKAGE, BOOKING]);
+  const readiness = await pool.query(
+    'INSERT INTO dispatch.readiness_events (booking_id, actor_id, drained, mature, intake_ready, created_at) VALUES ($1, $2, true, true, true, $3) RETURNING sequence',
+    [BOOKING, FARMER, at('08:25')],
+  );
+  await pool.query(
+    `INSERT INTO dispatch.field_inspections (booking_id, package_id, reviewer_id, result, readiness_sequence, window_start_at, window_end_at, created_at)
+     VALUES ($1, $2, $3, 'PASSED', $4, $5, $6, $7)`,
+    [BOOKING, PACKAGE, COOP, readiness.rows[0].sequence, at('08:00'), at('12:00'), at('08:28')],
+  );
   await pool.query("INSERT INTO dispatch.shifts (id, package_id, status, started_at) VALUES ($1, $2, 'PAUSED', $3)", [SHIFT, PACKAGE, at('08:30')]);
   await pool.query(`INSERT INTO dispatch.shift_events (shift_id, event_type, from_state, to_state, actor_id, created_at)
     VALUES ($1, 'SHIFT_STARTED', NULL, 'RUNNING', $2, $3)`, [SHIFT, OPERATOR, at('08:30')]);
@@ -138,11 +148,22 @@ async function fixtures(pool) {
   [DISPUTE, FARMER, JSON.stringify({ reason: 'QUALITY', details: 'SECRET-CLAIM-DETAILS' }), at('08:50')]);
   await pool.query(`INSERT INTO dispatch.dispute_events (dispute_id, event_type, actor_id, data, created_at)
     VALUES ($1, 'RESPONSE_ADDED', $2, $3::jsonb, $4)`, [DISPUTE, PROVIDER, JSON.stringify({ text: 'SECRET-RESPONSE-TEXT' }), at('09:20')]);
-  // Mediator assignment and its audit event commit together. The deferred audit trigger checks at COMMIT.
+  // Explicit escalation followed by mediator assignment and audit events commit together.
   // ADMIN_SEPARATE records the assignment but is neither party nor mediator, so must not see the dispute.
   const tx = await pool.connect();
   try {
     await tx.query('BEGIN');
+    await tx.query(
+      `INSERT INTO dispatch.dispute_events (dispute_id, event_type, actor_id, data, created_at)
+       VALUES ($1, 'MEDIATION_ESCALATED', $2, $3::jsonb, $4)`,
+      [DISPUTE, FARMER, JSON.stringify({ reason: 'SECRET-ESCALATION-REASON', conflictType: null, previousMediatorId: null }), at('09:25')],
+    );
+    await tx.query(
+      `UPDATE dispatch.disputes
+          SET mediation_level = 'ADMIN', mediator_id = NULL, escalated_at = $2, escalated_by = $3, escalation_reason = 'SECRET-ESCALATION-REASON'
+        WHERE id = $1`,
+      [DISPUTE, at('09:25'), FARMER],
+    );
     await tx.query('UPDATE dispatch.disputes SET mediator_id = $2 WHERE id = $1', [DISPUTE, MEDIATOR]);
     await tx.query(`INSERT INTO dispatch.dispute_events (dispute_id, event_type, actor_id, data, created_at)
       VALUES ($1, 'MEDIATOR_ASSIGNED', $2, $3::jsonb, $4)`,
@@ -254,7 +275,7 @@ test('pages the global feed in order without overlap or gaps', async () => {
   const full = await feed(FARMER);
   assert.equal(full.body.limit, 20);
   assert.equal(full.body.offset, 0);
-  assert.equal(full.body.items.length, 9);
+  assert.equal(full.body.items.length, 10);
   const seen = [];
   for (const offset of [0, 4, 8]) {
     const page = await feed(FARMER, `?limit=4&offset=${offset}`);
@@ -265,6 +286,28 @@ test('pages the global feed in order without overlap or gaps', async () => {
   }
   assert.deepEqual(seen.map((item) => item.id), full.body.items.map((item) => item.id));
   assert.equal((await feed(FARMER, '?limit=100&offset=10000')).body.items.length, 0);
+});
+
+test('conflicted mediator is excluded from dispute and remedy activity items without pagination holes', async () => {
+  const initial = await feed(MEDIATOR);
+  assert.equal(initial.body.items.length, 6);
+  assert.ok(initial.body.items.every((i) => i.type.startsWith('dispute.') || i.type.startsWith('remedy.')));
+
+  await ctx.pool.query('UPDATE dispatch.packages SET operator_id = $2 WHERE id = $1', [PACKAGE, MEDIATOR]);
+  try {
+    const duringConflict = await feed(MEDIATOR);
+    // Dispute and remedy items must be completely absent while conflicted.
+    assert.ok(!duringConflict.body.items.some((i) => i.type.startsWith('dispute.') || i.type.startsWith('remedy.')));
+  } finally {
+    await ctx.pool.query('UPDATE dispatch.packages SET operator_id = $2 WHERE id = $1', [PACKAGE, OPERATOR]);
+  }
+  await ctx.pool.query("DELETE FROM account.user_roles WHERE user_id = $1 AND role = 'admin'", [MEDIATOR]);
+  try {
+    assert.deepEqual((await feed(MEDIATOR)).body.items, []);
+  } finally {
+    await ctx.pool.query("INSERT INTO account.user_roles (user_id, role) VALUES ($1, 'admin') ON CONFLICT DO NOTHING", [MEDIATOR]);
+  }
+  assert.equal((await feed(MEDIATOR)).body.items.length, 6);
 });
 
 test('rejects invalid paging with INVALID_PAGINATION', async () => {

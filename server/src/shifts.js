@@ -56,10 +56,21 @@ function areaM2(value) {
 }
 
 const READINESS_KEYS = ['drained', 'mature', 'intakeReady'];
+const INSPECTION_RESULTS = ['PASSED', 'FAILED'];
 
 export function validateReadinessInput(body) {
   const input = plainBody(body, READINESS_KEYS);
   return { drained: flag(input.drained), mature: flag(input.mature), intakeReady: flag(input.intakeReady) };
+}
+
+export function validateInspectionInput(body) {
+  const input = plainBody(body, ['result', 'reason']);
+  if (typeof input.result !== 'string' || !INSPECTION_RESULTS.includes(input.result)) {
+    throw fail(400, 'VALIDATION_FAILED');
+  }
+  if (input.result === 'FAILED') return { result: 'FAILED', reason: text(input.reason) };
+  if (input.reason !== undefined) throw fail(400, 'VALIDATION_FAILED');
+  return { result: 'PASSED', reason: null };
 }
 
 export function validatePauseInput(body) {
@@ -192,9 +203,83 @@ async function confirmReadiness(pool, actor, bookingId, flags) {
   });
 }
 
+function inspectionDto(row, stale) {
+  return {
+    sequence: Number(row.sequence),
+    bookingId: row.booking_id,
+    packageId: row.package_id,
+    result: row.result,
+    reason: row.reason,
+    reviewerName: row.reviewer_name ?? null,
+    stale,
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
+async function recordInspection(pool, actor, bookingId, input) {
+  return transaction(pool, async (client) => {
+    // Scope to the HTX actually assigned to this booking and its package; foreign/missing return 404.
+    const scoped = await client.query(
+      `SELECT pb.package_id, p.coop_id
+         FROM dispatch.bookings b
+         LEFT JOIN dispatch.package_bookings pb ON pb.booking_id = b.id
+         LEFT JOIN dispatch.packages p ON p.id = pb.package_id
+        WHERE b.id = $1 AND b.coordinator_id = $2`,
+      [bookingId, actor.id],
+    );
+    if (!scoped.rows[0]) throw fail(404, 'NOT_FOUND');
+    const { package_id: packageId, coop_id: coopId } = scoped.rows[0];
+    if (packageId && coopId !== actor.id) throw fail(404, 'NOT_FOUND');
+    if (!packageId) throw fail(409, 'BOOKING_UNAVAILABLE');
+
+    // Share the package lock with startShift, readiness and cancel, then verify every precondition under lock.
+    const pkg = (await client.query(
+      'SELECT status, coop_id, window_start_at, window_end_at FROM dispatch.packages WHERE id = $1 FOR UPDATE',
+      [packageId],
+    )).rows[0];
+    if (!pkg || pkg.coop_id !== actor.id) throw fail(404, 'NOT_FOUND');
+    const booking = (await client.query('SELECT state FROM dispatch.bookings WHERE id = $1', [bookingId])).rows[0];
+    if (!['OPEN', 'CLAIMED'].includes(pkg.status) || !booking || !['GROUPED', 'ASSIGNED'].includes(booking.state)) {
+      throw fail(409, 'BOOKING_UNAVAILABLE');
+    }
+    if (await hasShift(client, packageId)) throw fail(409, 'SHIFT_STARTED');
+
+    const readiness = await client.query(
+      'SELECT sequence FROM dispatch.readiness_events WHERE booking_id = $1 ORDER BY sequence DESC LIMIT 1',
+      [bookingId],
+    );
+    if (!readiness.rows[0]) throw fail(409, 'READINESS_MISSING');
+
+    const { rows } = await client.query(
+      `INSERT INTO dispatch.field_inspections
+         (booking_id, package_id, reviewer_id, result, reason, readiness_sequence, window_start_at, window_end_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING sequence, booking_id, package_id, result, reason, created_at`,
+      [
+        bookingId,
+        packageId,
+        actor.id,
+        input.result,
+        input.reason,
+        readiness.rows[0].sequence,
+        pkg.window_start_at,
+        pkg.window_end_at,
+      ],
+    );
+    const user = await client.query('SELECT name FROM account.users WHERE id = $1', [actor.id]);
+    return {
+      status: 201,
+      body: { inspection: inspectionDto({ ...rows[0], reviewer_name: user.rows[0]?.name ?? null }, false) },
+    };
+  });
+}
+
 async function startShift(pool, actor, packageId) {
   return transaction(pool, async (client) => {
-    const { rows } = await client.query('SELECT status, operator_id FROM dispatch.packages WHERE id = $1 FOR UPDATE', [packageId]);
+    const { rows } = await client.query(
+      'SELECT status, operator_id, window_start_at, window_end_at FROM dispatch.packages WHERE id = $1 FOR UPDATE',
+      [packageId],
+    );
     const pkg = rows[0];
     if (!pkg || pkg.operator_id !== actor.id) throw fail(404, 'NOT_FOUND');
     if (pkg.status !== 'CLAIMED') throw fail(409, 'PACKAGE_NOT_CLAIMED');
@@ -209,6 +294,26 @@ async function startShift(pool, actor, packageId) {
       [packageId],
     );
     if (gaps.rows[0].n > 0) throw fail(409, 'READINESS_INCOMPLETE');
+    // Latest HTX inspection per booking must be PASSED and still match current readiness and package window.
+    const inspectionGaps = await client.query(
+      `SELECT count(*)::int AS n FROM dispatch.package_bookings pb
+         LEFT JOIN LATERAL (
+           SELECT sequence FROM dispatch.readiness_events r
+            WHERE r.booking_id = pb.booking_id ORDER BY r.sequence DESC LIMIT 1) lr ON true
+         LEFT JOIN LATERAL (
+           SELECT result, readiness_sequence, window_start_at, window_end_at
+             FROM dispatch.field_inspections i
+            WHERE i.booking_id = pb.booking_id ORDER BY i.sequence DESC LIMIT 1) li ON true
+        WHERE pb.package_id = $1
+          AND NOT COALESCE(
+            li.result = 'PASSED'
+            AND li.readiness_sequence = lr.sequence
+            AND li.window_start_at = $2
+            AND li.window_end_at = $3,
+            false)`,
+      [packageId, pkg.window_start_at, pkg.window_end_at],
+    );
+    if (inspectionGaps.rows[0].n > 0) throw fail(409, 'INSPECTION_INCOMPLETE');
     const shift = (await client.query(
       "INSERT INTO dispatch.shifts (package_id, status) VALUES ($1, 'RUNNING') RETURNING *",
       [packageId],
@@ -328,6 +433,54 @@ export function createShiftRouter({ pool, authenticate }) {
     return { body: await confirmReadiness(pool, req.actor, bookingId, flags) };
   }));
 
+  router.get('/api/bookings/:id/inspections', authenticate, route(['farmer', 'coop'], async (req) => {
+    const bookingId = identifier(req.params.id);
+    const isFarmer = req.actor.roles.includes('farmer');
+    const isCoop = req.actor.roles.includes('coop');
+    const scoped = await pool.query(
+      `SELECT b.state AS booking_state, b.coordinator_id,
+              p.id AS package_id, p.coop_id, p.status AS package_status, p.window_start_at, p.window_end_at,
+              EXISTS (SELECT 1 FROM dispatch.shifts s WHERE s.package_id = p.id) AS has_shift,
+              (SELECT max(r.sequence) FROM dispatch.readiness_events r WHERE r.booking_id = b.id) AS latest_readiness_sequence
+         FROM dispatch.bookings b
+         LEFT JOIN dispatch.package_bookings pb ON pb.booking_id = b.id
+         LEFT JOIN dispatch.packages p ON p.id = pb.package_id
+        WHERE b.id = $1
+          AND (($3::boolean AND b.owner_id = $2)
+            OR ($4::boolean AND b.coordinator_id = $2 AND (p.id IS NULL OR p.coop_id = $2)))`,
+      [bookingId, req.actor.id, isFarmer, isCoop],
+    );
+    if (!scoped.rows[0]) throw fail(404, 'NOT_FOUND');
+    const row = scoped.rows[0];
+    const { rows } = await pool.query(
+      `SELECT i.sequence, i.booking_id, i.package_id, i.result, i.reason, i.created_at, u.name AS reviewer_name,
+              NOT COALESCE(
+                i.readiness_sequence = $2 AND i.window_start_at = $3 AND i.window_end_at = $4,
+                false) AS stale
+         FROM dispatch.field_inspections i
+         LEFT JOIN account.users u ON u.id = i.reviewer_id
+        WHERE i.booking_id = $1
+        ORDER BY i.sequence DESC
+        LIMIT 20`,
+      [bookingId, row.latest_readiness_sequence, row.window_start_at, row.window_end_at],
+    );
+    const history = rows.map((item) => inspectionDto(item, item.stale));
+    const latest = history[0] ?? null;
+    const canInspect = Boolean(
+      isCoop && row.coordinator_id === req.actor.id && row.coop_id === req.actor.id
+      && ['OPEN', 'CLAIMED'].includes(row.package_status)
+      && ['GROUPED', 'ASSIGNED'].includes(row.booking_state)
+      && !row.has_shift && row.latest_readiness_sequence !== null,
+    );
+    return { body: { canInspect, passed: Boolean(latest && latest.result === 'PASSED' && !latest.stale), latest, history } };
+  }));
+
+  router.post('/api/bookings/:id/inspections', authenticate, route(['coop'], async (req) => {
+    const bookingId = identifier(req.params.id);
+    const input = validateInspectionInput(req.body);
+    return recordInspection(pool, req.actor, bookingId, input);
+  }));
+
   router.post('/api/packages/:id/shifts/start', authenticate, route(['operator'], async (req) => {
     const packageId = identifier(req.params.id);
     plainBody(req.body, [], { allowAbsent: true });
@@ -365,11 +518,19 @@ export function createShiftRouter({ pool, authenticate }) {
       NOT EXISTS (SELECT 1 FROM dispatch.package_bookings pb
         LEFT JOIN LATERAL (SELECT drained,mature,intake_ready FROM dispatch.readiness_events r
           WHERE r.booking_id=pb.booking_id ORDER BY r.sequence DESC LIMIT 1) latest ON true
-        WHERE pb.package_id=p.id AND NOT COALESCE(latest.drained AND latest.mature AND latest.intake_ready,false)) AS ready
+        WHERE pb.package_id=p.id AND NOT COALESCE(latest.drained AND latest.mature AND latest.intake_ready,false)) AS ready,
+      NOT EXISTS (SELECT 1 FROM dispatch.package_bookings pb
+        LEFT JOIN LATERAL (SELECT sequence FROM dispatch.readiness_events r
+          WHERE r.booking_id=pb.booking_id ORDER BY r.sequence DESC LIMIT 1) lr ON true
+        LEFT JOIN LATERAL (SELECT result,readiness_sequence,window_start_at,window_end_at FROM dispatch.field_inspections i
+          WHERE i.booking_id=pb.booking_id ORDER BY i.sequence DESC LIMIT 1) li ON true
+        WHERE pb.package_id=p.id AND NOT COALESCE(
+          li.result='PASSED' AND li.readiness_sequence=lr.sequence
+          AND li.window_start_at=p.window_start_at AND li.window_end_at=p.window_end_at,false)) AS inspected
       FROM dispatch.packages p WHERE p.operator_id=$1 AND p.status='CLAIMED'
         AND NOT EXISTS (SELECT 1 FROM dispatch.shifts s WHERE s.package_id=p.id)
       ORDER BY p.window_start_at,p.id LIMIT $2 OFFSET $3`, [req.actor.id, window.limit, window.offset]);
-    return { body: { packages: rows.map((row) => ({ id:row.id,locality:row.locality,startAt:row.window_start_at.toISOString(),endAt:row.window_end_at.toISOString(),bookingCount:row.booking_count,ready:row.ready })) } };
+    return { body: { packages: rows.map((row) => ({ id:row.id,locality:row.locality,startAt:row.window_start_at.toISOString(),endAt:row.window_end_at.toISOString(),bookingCount:row.booking_count,ready:row.ready,inspected:row.inspected })) } };
   }));
 
   router.get('/api/shifts', authenticate, route(READ_ROLES, async (req) => {

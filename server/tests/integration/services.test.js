@@ -199,7 +199,11 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   const outsider = await createRole('outside-operator', 'operator');
   assert.deepEqual((await (await readAs('/api/shift-packages', outsider.token)).json()).packages, []);
   assert.equal((await post(booking.url, `/api/bookings/${original.booking.id}/readiness`, { drained: true, mature: true, intakeReady: true }, session.token)).status, 200);
-  assert.equal((await (await readAs('/api/shift-packages', operator.token)).json()).packages[0].ready, true);
+  const readyPackage = (await (await readAs('/api/shift-packages', operator.token)).json()).packages[0];
+  assert.equal(readyPackage.ready, true);
+  assert.equal(readyPackage.inspected, false);
+  assert.equal((await post(booking.url, `/api/bookings/${original.booking.id}/inspections`, { result: 'PASSED' }, coopSession.token)).status, 201);
+  assert.equal((await (await readAs('/api/shift-packages', operator.token)).json()).packages[0].inspected, true);
   const started = await post(booking.url, `/api/packages/${packageId}/shifts/start`, {}, operator.token);
   assert.equal(started.status, 201);
   const shiftId = (await started.json()).shift.id;
@@ -303,6 +307,7 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   const readyThumbnail=await readAs(`/api/evidence/${evidence.id}/thumbnail`,provider.token);
   assert.equal(readyThumbnail.status,200);assert.equal(readyThumbnail.headers.get('content-type'),'image/jpeg');
   assert.deepEqual(Buffer.from(await readyThumbnail.arrayBuffer()),generated.bytes);
+  assert.equal((await post(booking.url, `/api/disputes/${disputeId}/escalate`, { reason: 'Synthetic escalation to admin' }, mediator.token)).status, 200);
   assert.equal((await post(booking.url, `/api/disputes/${disputeId}/mediator`, { mediatorId: mediator.id }, mediator.token)).status, 200);
   assert.equal((await readAs(`/api/evidence/${evidence.id}/content`,mediator.token)).status,200);
   assert.equal((await upload(mediator.token)).status,403);

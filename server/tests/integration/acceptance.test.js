@@ -52,6 +52,7 @@ async function call(method, path, actor, payload) {
 const post = (path, payload, actor) => call('POST', path, actor, payload);
 const get = (path, actor) => call('GET', path, actor);
 const ready = (bookingId, actor = FARMER) => post(`/api/bookings/${bookingId}/readiness`, ALL_TRUE, actor);
+const inspect = (bookingId, actor = COOP) => post(`/api/bookings/${bookingId}/inspections`, { result: 'PASSED' }, actor);
 const start = (packageId, actor = OPERATOR) => post(`/api/packages/${packageId}/shifts/start`, undefined, actor);
 const complete = (shiftId, areaM2, actor = OPERATOR) => post(`/api/shifts/${shiftId}/complete`, { areaM2 }, actor);
 const acceptancePath = (bookingId) => `/api/bookings/${bookingId}/acceptance`;
@@ -106,7 +107,10 @@ async function completedPackage({ bookings = 1, area = 10000, claim = true, owne
 
 async function completedShift(options) {
   const f = await completedPackage(options);
-  for (const bookingId of f.bookingIds) assert.equal((await ready(bookingId, options?.owner ?? FARMER)).status, 200);
+  for (const bookingId of f.bookingIds) {
+    assert.equal((await ready(bookingId, options?.owner ?? FARMER)).status, 200);
+    assert.equal((await inspect(bookingId)).status, 201);
+  }
   const started = await start(f.packageId);
   assert.equal(started.status, 201);
   const shiftId = started.body.shift.id;
