@@ -57,6 +57,8 @@ docker compose --env-file .env -f infra/compose.yaml down
 
 - Service `app` chạy ở chế độ production. Service `db` dùng PostgreSQL 17 với hostname nội bộ `db`.
 - Compose không tự chạy migration. Chạy `npm run db:migrate` như bước riêng.
+- Mở `/v2/` để dùng giao diện chia theo vai trò. `/` vẫn phục vụ giao diện cũ.
+- Ảnh bằng chứng lưu riêng trong volume `evidence_data`, không nằm trong thư mục công khai. `down` giữ cả ảnh và DB; sao lưu cả hai khi cần giữ hồ sơ. Ảnh gốc giữ nguyên metadata, ảnh thu nhỏ không giữ EXIF. Không dùng đồng thời kho local và cấu hình Azure Blob.
 - Chạy toàn bộ lint/test trong container bằng DB riêng dùng một lần:
 
 ```bash
