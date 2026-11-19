@@ -14,6 +14,30 @@ Tài liệu này mô tả ma trận kiểm thử, cách chạy trình điều ph
 
 Không có tầng kiểm thử nào ở trên chứng minh 100% hệ thống production hay năng lực chịu tải.
 
+## Chromium cho UI v2
+
+Chạy `npm run test:browser:v2` với `TEST_DATABASE_URL` trỏ tới DB dùng một lần trên `127.0.0.1` và `CHROMIUM_BIN` trỏ tới Chromium (mặc định `chromium`). Không chạy trên DB demo. Các kịch bản nghiệp vụ tự tạo DB riêng, áp migration và chạy hai dịch vụ trên cổng loopback. Hai kịch bản D7 lưu ảnh chụp ngoài repo và dùng kho ảnh mô phỏng, không kiểm kho lưu trữ của Compose.
+
+- Nhánh HTX: H-03 hiển thị ngưỡng giả định từ API, cả mặc định lẫn phiên bản đã lưu. Gợi ý chỉ chọn thêm đơn; khi API gợi ý không phản hồi, HTX vẫn tạo gói thủ công và API đọc lại đúng các đơn đã chọn. Kiểm thẩm định đạt/không đạt, thẩm định lại, hòa giải và chuyển cấp khi có xung đột lợi ích. Từ tài khoản chung, mở hoạt động gần đây (C-03) theo vai trò HTX và bấm sự kiện để mở đúng vụ đã hòa giải (H-08).
+- Khung giao diện: kiểm tràn ngang, toast, thao tác cuối trang và phục hồi focus ở 320, 390, 1024 và 1440 px. Ở 320 và 390 px, kiểm đủ năm tab thợ lái, nhãn không bị cắt, không cần vuốt ngang và vùng bấm tối thiểu 44 × 44 px. Dùng khung thật với nội dung kiểm thử, không cần DB.
+- Nhánh nông dân/thợ lái/quản trị: mở thẳng liên kết đơn F-07 khi chưa đăng nhập, kiểm đăng nhập xong trở về đúng đơn. Kiểm trạng thái thẩm định trước ca, chặn thao tác với trạng thái cũ, chuyển cấp có lý do, phân công hòa giải và kiểm quyền xem ảnh. Hai bên đồng ý độc lập theo phiên bản phương án.
+
+- Luồng gặt: nông dân tạo thửa, đặt và ủy quyền; HTX gom gói; chủ máy nhận gói; nông dân khai báo; HTX thẩm định; thợ mở và kết thúc ca. Tin tuyển, cam kết làm việc và máy được chuẩn bị trước bằng API.
+- Dời lịch cả gói: HTX đề xuất (H-07), chủ ruộng (F-15) và chủ máy (P-02) đồng ý riêng cùng phiên bản. Nếu có đề xuất mới khi chủ ruộng đang xem bản cũ, F-15 báo lỗi và chuyển focus tới nút tải lại. Test đọc lại API để kiểm bản cũ không ghi nhận đồng ý, lịch gói chỉ đổi sau khi đủ hai bên và khung giờ yêu cầu ban đầu của đơn giữ nguyên.
+- Kiểm tra bổ sung trong cùng luồng: quản trị gán/gỡ xã (A-02), HTX xem địa bàn mà quyền trên đơn ủy quyền không đổi (H-01); lưu đường vào và đất ruộng không đổi diện tích hoặc ranh thửa (F-04); thợ lưu hồ sơ và chứng chỉ tự khai qua API (O-08).
+- P-02: trước khi nhận gói, chủ máy thấy cảnh báo đường hẹp, cầu tải trọng thấp và thông tin đất ruộng khai ở F-04. Test kiểm API chỉ trả số lượng theo nhóm, không trả tọa độ hoặc ID chủ ruộng, và thẻ không tràn ngang ở 390 px.
+- Ranh thửa (F-04): chỉ mở nhập tọa độ sau đồng ý, chặn đa giác tự cắt, lưu và đọc lại diện tích do máy chủ tính. Rút đồng ý xóa tọa độ đã lưu, giữ diện tích; đồng ý lại không khôi phục tọa độ cũ. Sơ đồ không dùng bản đồ nền.
+- Cùng kịch bản kiểm cọc chờ HTX gọi, chặn mã tham chiếu sai và lưu xác nhận riêng. Sau nghiệm thu, số tiền ghi báo thêm đã trừ cọc xác nhận; số dư chỉ về 0 sau khi chủ máy xác nhận khoản cuối (F-12, P-07). Kịch bản cũng kiểm chỉ số máy mô phỏng (O-02, F-10, H-06) và hoa hồng giả định theo đơn thuộc HTX (H-09).
+- Khóa quyết toán: nông dân mở khiếu nại qua F-13. Khi vụ việc còn `OPEN`, F-11, F-12 và P-07 ẩn thao tác ghi nhưng giữ lịch sử. API trả `409 DISPUTE_OPEN` khi thử ghi mới; phiên bản nghiệm thu, lịch sử chuyển tiền và số dư không đổi.
+- Cuối luồng gặt, thợ gửi báo cáo tin tuyển (O-04); quản trị viên xem xét rồi đóng tin bằng thao tác riêng (A-06). Đề nghị nhận việc đã được chấp nhận vẫn giữ nguyên.
+- `local-monitoring.test.mjs`: kiểm F-10 chưa mở ca/chưa gom gói, O-02 theo trạng thái chạy/tạm dừng/hoàn tất, H-06/H-09 giới hạn theo phạm vi HTX. Khi gateway mất kết nối, F-10 báo lỗi thay vì hiện số liệu cũ. Test đăng nhập qua giao diện và đọc lại nhật ký ca trong PostgreSQL.
+- `workforce-path.test.mjs`: chủ máy đăng tin (P-08); thợ mở tin và ứng tuyển (O-03, O-04, O-05); chủ máy gửi đề nghị (P-09); thợ nhận việc và không còn nút rút ứng tuyển (O-06). Test đọc lại đơn ứng tuyển và đề nghị đã nhận trong PostgreSQL. Kịch bản cũng kiểm khai và duyệt chứng chỉ (O-08, A-01), gồm phân trang và lưu lại không tạo bản trùng, rồi kiểm báo và xác nhận tiền công ngoài ứng dụng (P-05, O-07). Các bước phân công và kết thúc ca dùng API để chuẩn bị cho kiểm thử tiền công.
+- `boundary-harvest-facts.mjs`: kiểm kéo, dịch và xóa đỉnh bằng bàn phím hoặc con trỏ, nhập tọa độ khi không dùng sơ đồ và lỗi nhập không ghi đè ranh đã lưu (F-04). Kiểm giống lúa, ngày sạ và ngày gặt dự kiến từ form qua báo giá đến chi tiết đơn (F-05, F-06, F-07); đọc lại API và kiểm giá tính theo diện tích đã lưu.
+
+Các kịch bản này không thay cho kiểm thử mọi màn và toàn bộ luồng nghiệp vụ v2.
+
+`npm run test:integration` có ca `local-upgrade.test.js`: tạo dữ liệu trên schema 017, áp các migration còn lại và đọc lại tài khoản đăng nhập email, thửa ruộng, báo giá đơn cũ qua gateway thật. Ca này dùng DB tạm, không chạy nâng cấp trên DB demo.
+
 ## Chạy trình điều phối System Test (`server/scripts/test-system.js`)
 
 ### Điều kiện tiên quyết
