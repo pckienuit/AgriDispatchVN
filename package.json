@@ -16,7 +16,7 @@
     "test:coverage": "node --experimental-test-coverage --test-coverage-include='server/src/**' --test-coverage-include='functions/thumbnail/*.cjs' --test-coverage-exclude='**/*.test.*' --test server/tests/*.test.js server/tests/integration/*.test.js functions/thumbnail/*.test.cjs",
     "test:kubernetes": "node server/scripts/test-kubernetes.js",
     "test:system": "node server/scripts/test-system.js",
-    "test:browser:v2": "node server/tests/browser-v2/shared-shell-layout.test.mjs && node server/tests/browser-v2/common-access.test.mjs && node server/tests/browser-v2/d7-coop-ui.test.mjs && node server/tests/browser-v2/d7-role-ui.test.mjs && node server/tests/browser-v2/harvest-journey.mjs && node server/tests/browser-v2/local-monitoring.test.mjs && node server/tests/browser-v2/workforce-path.test.mjs && node server/tests/browser-v2/boundary-harvest-facts.mjs && node server/tests/browser-v2/admin-platform-controls.test.mjs",
+    "test:browser:v2": "node server/tests/browser-v2/shared-shell-layout.test.mjs && node server/tests/browser-v2/common-access.test.mjs && node server/tests/browser-v2/farmer-activity-readback.test.mjs && node server/tests/browser-v2/provider-overview-shift.test.mjs && node server/tests/browser-v2/d7-coop-ui.test.mjs && node server/tests/browser-v2/d7-role-ui.test.mjs && node server/tests/browser-v2/harvest-journey.mjs && node server/tests/browser-v2/local-monitoring.test.mjs && node server/tests/browser-v2/workforce-path.test.mjs && node server/tests/browser-v2/boundary-harvest-facts.mjs && node server/tests/browser-v2/admin-platform-controls.test.mjs",
     "lint": "eslint .",
     "db:migrate": "node --env-file-if-exists=.env server/scripts/migrate.js"
   },

@@ -1393,12 +1393,18 @@ async function shiftsScreen(ctx) {
   const requestedId = ctx.params.id ? ctx.params.id.toLowerCase() : null;
   const currentSummary = (requestedId ? shifts.find((s) => s.id === requestedId) : null) || shifts[0];
   let detail = null;
+  let pkgForDetail = currentSummary ? pkgById.get(currentSummary.packageId) : null;
   if (currentSummary) {
-    const { data } = await ctx.api.request('GET', `/api/shifts/${currentSummary.id}`, { auth: true });
-    detail = data?.shift || currentSummary;
+    const [shiftRes, pkgRes] = await Promise.all([
+      ctx.api.request('GET', `/api/shifts/${currentSummary.id}`, { auth: true }),
+      currentSummary.packageId
+        ? ctx.api.request('GET', `/api/packages/${currentSummary.packageId}`, { auth: true }).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    detail = shiftRes.data?.shift || currentSummary;
+    if (pkgRes?.data?.package) pkgForDetail = pkgRes.data.package;
   }
 
-  const pkgForDetail = detail ? pkgById.get(detail.packageId) : null;
   const svcForDetail = pkgForDetail ? servicesById.get(pkgForDetail.serviceId) : null;
   const events = Array.isArray(detail?.events) ? detail.events : [];
 
