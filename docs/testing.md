@@ -35,6 +35,7 @@ Chạy `npm run test:browser:v2` với `TEST_DATABASE_URL` trỏ tới DB dùng 
 - `local-monitoring.test.mjs`: kiểm F-10 chưa mở ca/chưa gom gói, O-02 theo trạng thái chạy/tạm dừng/hoàn tất, H-06/H-09 giới hạn theo phạm vi HTX. Khi gateway mất kết nối, F-10 báo lỗi thay vì hiện số liệu cũ. Test đăng nhập qua giao diện và đọc lại nhật ký ca trong PostgreSQL.
 - `workforce-path.test.mjs`: chủ máy đăng tin (P-08); thợ mở tin và ứng tuyển (O-03, O-04, O-05); chủ máy gửi đề nghị (P-09); thợ nhận việc và không còn nút rút ứng tuyển (O-06). Test đọc lại đơn ứng tuyển và đề nghị đã nhận trong PostgreSQL. Kịch bản cũng kiểm khai và duyệt chứng chỉ (O-08, A-01), gồm phân trang và lưu lại không tạo bản trùng, rồi kiểm báo và xác nhận tiền công ngoài ứng dụng (P-05, O-07). Các bước phân công và kết thúc ca dùng API để chuẩn bị cho kiểm thử tiền công.
 - `boundary-harvest-facts.mjs`: kiểm kéo, dịch và xóa đỉnh bằng bàn phím hoặc con trỏ, nhập tọa độ khi không dùng sơ đồ và lỗi nhập không ghi đè ranh đã lưu (F-04). Kiểm giống lúa, ngày sạ và ngày gặt dự kiến từ form qua báo giá đến chi tiết đơn (F-05, F-06, F-07); đọc lại API và kiểm giá tính theo diện tích đã lưu.
+- `admin-platform-controls.test.mjs`: A-04 chặn dữ liệu sai không tạo phiên bản, lưu tham số giả định và đọc lại thời điểm, lý do và giá trị từ API/PostgreSQL. A-05 hiển thị đúng sự kiện lưu và chỉ đọc nhật ký, không xác nhận tuân thủ pháp luật. Kiểm ở 390 và 1440 px.
 
 Các kịch bản này không thay cho kiểm thử mọi màn và toàn bộ luồng nghiệp vụ v2.
 

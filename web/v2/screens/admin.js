@@ -1284,12 +1284,12 @@ async function platformParametersScreen(ctx) {
     let values; try { values = JSON.parse(String(fd.get('values') || '')); } catch { throw new Error('JSON chưa hợp lệ.'); }
     await ctx.api.request('PUT', '/api/admin/platform-parameters', { auth: true, body: { values, note: String(fd.get('note') || '') } });
   }, onDone() { if (!ctx.stale()) { ctx.toast('Đã lưu phiên bản tham số.', 'ok'); ctx.rerender(); } } });
-  return h('div', { class: 'stack' }, ui.screenHead({ title: 'Tham số vận hành', sub: 'Các giá trị là giả định được gắn nhãn. Không cấu hình thu phí thật.' }), ui.card({ title: `Phiên bản ${data.effective.version}`, subtitle: data.effective.created_at || 'Chưa lưu phiên bản', body: h('div', { class: 'stack' }, ui.kv(rows), form) }), ui.card({ title: 'Lịch sử phiên bản', body: ui.table({ rows: data.history, cols: [{ key: 'version', label: 'Phiên bản' }, { key: 'note', label: 'Lý do' }, { key: 'created_at', label: 'Thời điểm' }] }) }));
+  return h('div', { class: 'stack' }, ui.screenHead({ title: 'Tham số vận hành', sub: 'Các giá trị là giả định được gắn nhãn. Không cấu hình thu phí thật.' }), ui.card({ title: `Phiên bản ${data.effective.version}`, subtitle: data.effective.createdAt ? fmtTime(data.effective.createdAt) : 'Chưa lưu phiên bản', body: h('div', { class: 'stack' }, ui.kv(rows), form) }), ui.card({ title: 'Lịch sử phiên bản', body: ui.table({ rows: data.history, cols: [{ key: 'version', label: 'Phiên bản' }, { key: 'note', label: 'Lý do' }, { key: 'created_at', label: 'Thời điểm' }] }) }));
 }
 
 async function complianceScreen(ctx) {
   const { data } = await ctx.api.request('GET', '/api/admin/compliance-status', { auth: true });
-  return h('div', { class: 'stack' }, ui.screenHead({ title: 'Trạng thái tuân thủ', sub: 'Danh sách sự kiện đã lưu để theo dõi vận hành.' }), ui.banner({ tone: 'warn', title: 'Không phải chứng nhận pháp lý', text: 'Trạng thái này chỉ đọc nhật ký dữ liệu hiện có. Không đánh giá hoặc xác nhận tuân thủ pháp luật.' }), ui.table({ rows: data.items, cols: [{ key: 'source', label: 'Nguồn' }, { key: 'event_type', label: 'Sự kiện' }, { key: 'to_status', label: 'Trạng thái' }, { key: 'created_at', label: 'Thời điểm' }] }));
+  return h('div', { class: 'stack' }, ui.screenHead({ title: 'Trạng thái tuân thủ', sub: 'Danh sách sự kiện đã lưu để theo dõi vận hành.' }), ui.banner({ tone: 'warn', title: 'Không phải chứng nhận pháp lý', text: 'Trạng thái này chỉ đọc nhật ký dữ liệu hiện có. Không đánh giá hoặc xác nhận tuân thủ pháp luật.' }), ui.table({ rows: data.items, cols: [{ key: 'source', label: 'Nguồn' }, { key: 'action', label: 'Sự kiện' }, { key: 'to_status', label: 'Trạng thái' }, { key: 'created_at', label: 'Thời điểm' }] }));
 }
 
 async function jobReportsScreen(ctx) {
