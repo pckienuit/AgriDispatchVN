@@ -2,7 +2,7 @@
 // mật khẩu theo quyết định D4, không gửi OTP.
 import { ui } from '../kit/ui.js';
 import { apiButton, apiForm } from '../app/actions.js';
-import { NAV, ROLES, homeSlugFor, slugForApiRole, url } from '../app/routes.js';
+import { NAV, ROLES, codeAllowedInRole, homeSlugFor, parseHash, url } from '../app/routes.js';
 
 const h = ui.h;
 
@@ -17,9 +17,12 @@ const ROLE_ICON = { farmer: 'plant', provider: 'tractor', operator: 'identificat
 const REQUESTABLE = ['provider', 'operator', 'coop'];
 const REQUEST_STATUS = { PENDING: ['Chờ duyệt', 'idle'], APPROVED: ['Đã duyệt', 'ok'], REJECTED: ['Bị từ chối', 'error'] };
 
-function safeNext(value) {
-  // Only internal v2 routes are accepted as a return target.
-  return typeof value === 'string' && /^\/[a-z-]+\/[A-Z]-\d{2}(\?[\w=&%.-]*)?$/.test(value) ? `#${value}` : null;
+export function safeNext(value, built) {
+  if (typeof value !== 'string' || !/^\/[a-z-]+\/[a-zA-Z]-\d{2}(?:\?|$)/.test(value)) return null;
+  const route = parseHash(value);
+  if (route.kind !== 'screen' || !built.has(route.code) || !codeAllowedInRole(route.code, route.role.slug)
+    || route.code === 'C-01' || route.code === 'C-04') return null;
+  return url(route.role.slug, route.code, route.params);
 }
 
 function passwordInput(autocomplete) {
@@ -29,7 +32,7 @@ function passwordInput(autocomplete) {
 /* ---------- C-01 ---------- */
 function login(ctx) {
   const register = ctx.params.buoc === 'dang-ky';
-  const next = safeNext(ctx.params.tiep);
+  const next = safeNext(ctx.params.tiep, ctx.built);
   if (ctx.session.isSignedIn()) {
     return h('div', { class: 'stack' },
       ui.banner({ tone: 'success', title: 'Bạn đang đăng nhập', text: `Tài khoản ${ctx.user.name}.` }),
@@ -120,7 +123,7 @@ async function account(ctx) {
       h('div', null, h('div', null, ROLE_INFO[r.role]?.name || r.role), h('div', { class: 'small muted' }, ui.fmt.dateTime(Date.parse(r.createdAt))), r.decisionReason ? h('div', { class: 'small' }, `Lý do: ${r.decisionReason}`) : null),
       ui.badge(...(REQUEST_STATUS[r.status] || [r.status, 'outline']))))) }) : null,
     ui.card({ title: 'Hiển thị', body: ui.field({ label: 'Giao diện', input: themeSeg }) }),
-    ui.link('Hoạt động gần đây', url(ctx.role.slug === 'chung' ? (slugForApiRole(homeSlugFor(user)) || 'nong-dan') : ctx.role.slug, 'C-03'), 'bell'));
+    ui.link('Hoạt động gần đây', url(ctx.role.slug === 'chung' ? (homeSlugFor(user) || 'chung') : ctx.role.slug, 'C-03'), 'bell'));
 }
 
 /* ---------- C-03 ---------- */
@@ -130,13 +133,13 @@ const TARGET = {
   booking: { 'nong-dan': 'F-07' },
   job: { 'chu-may': 'P-09', 'tho-lai': 'O-04' },
   shift: { 'tho-lai': 'O-01', 'chu-may': 'P-06', htx: 'H-06' },
-  dispute: { 'nong-dan': 'F-13', 'chu-may': 'P-10', htx: 'H-07', 'quan-tri': 'A-03' },
+  dispute: { 'nong-dan': 'F-13', 'chu-may': 'P-10', htx: 'H-08', 'quan-tri': 'A-03' },
 };
 export function v2LinkFor(href, roleSlug, built) {
   const m = /^#(booking|job|shift|dispute)\/(.+)$/.exec(href || '');
   if (!m || !UUID.test(m[2])) return null;
   const code = TARGET[m[1]][roleSlug];
-  return code && built.has(code) ? url(roleSlug, code, { id: m[2].toLowerCase() }) : null;
+  return code && built.has(code) ? url(roleSlug, code, { id: m[2].toLowerCase(), hang: code === 'H-08' ? 'cua-toi' : null }) : null;
 }
 
 async function activity(ctx) {

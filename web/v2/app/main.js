@@ -4,25 +4,13 @@ import { createApiClient } from '../../api.js';
 import { ui } from '../kit/ui.js';
 import { ROLES, codeAllowedInRole, homeSlugFor, navFor, parseHash, url } from './routes.js';
 import { errorText } from './actions.js';
-import { screens as common } from '../screens/common.js';
-import { screens as farmer } from '../screens/farmer.js';
-import { screens as provider } from '../screens/provider.js';
-import { screens as operator } from '../screens/operator.js';
-import { screens as coop } from '../screens/coop.js';
-import { screens as admin } from '../screens/admin.js';
+import { registry } from './registry.js';
 
 const doc = globalThis.document;
 const loc = globalThis.location;
 const h = ui.h;
 const mount = doc.getElementById('app');
 
-const registry = new Map();
-for (const list of [common, farmer, provider, operator, coop, admin]) {
-  for (const screen of list) {
-    if (registry.has(screen.code)) throw new Error(`Duplicate screen ${screen.code}`);
-    registry.set(screen.code, screen);
-  }
-}
 const built = new Set(registry.keys());
 const PUBLIC = new Set(['C-01', 'C-04']);
 

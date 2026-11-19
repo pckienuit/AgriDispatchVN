@@ -8,6 +8,14 @@
 .farmer h3 { font-weight: 600; }
 .farmer-strong { font-weight: 600; }
 .farmer-area { font-size: var(--fs-h2); font-weight: 500; }
+.farmer-boundary { margin: 0; }
+.farmer-boundary-outline { display: block; width: 100%; max-width: 20rem; background: var(--surface-2); }
+.farmer-boundary-outline polygon { fill: currentColor; fill-opacity: .12; stroke: currentColor; stroke-width: 2; }
+/* Transparent stroke widens the touch target without changing the drawn dot. */
+.farmer-boundary-vertex { fill: var(--surface); stroke: transparent; stroke-width: 16; cursor: grab; touch-action: none; color: var(--ink); }
+.farmer-boundary-vertex:focus { outline: none; }
+.farmer-boundary-vertex:focus-visible { stroke: var(--accent-hover); stroke-width: 4; }
+.farmer-boundary-vertex:active { cursor: grabbing; }
 .farmer-acts { width: 100%; }
 .farmer-acts .btn { width: 100%; }
 .farmer-split { display: flex; gap: 12px; }

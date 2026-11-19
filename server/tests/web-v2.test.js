@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import test from 'node:test';
 import { NAV, ROLES, codeAllowedInRole, homeSlugFor, navFor, parseHash, url } from '../../web/v2/app/routes.js';
+import { registry } from '../../web/v2/app/registry.js';
+import { safeNext } from '../../web/v2/screens/common.js';
 
 const root = new URL('../../web/v2/', import.meta.url);
 
@@ -40,6 +42,13 @@ test('url builds hashes that parse back and drops empty params', () => {
   assert.deepEqual(parseHash(hash).params, { id: 'a b' });
 });
 
+test('login return route preserves internal screen params and rejects unknown or external targets', () => {
+  assert.equal(safeNext('/nong-dan/f-06?giong=OM+5451&__proto__=x', registry), '#/nong-dan/F-06?giong=OM+5451');
+  for (const value of ['https://example.test/', '//nong-dan/F-06', '/nong-dan/A-01', '/htx/H-10', '/chung/C-01']) {
+    assert.equal(safeNext(value, registry), null, value);
+  }
+});
+
 test('role guards: screen letter must match role, account screens are shared', () => {
   assert.equal(codeAllowedInRole('F-01', 'nong-dan'), true);
   assert.equal(codeAllowedInRole('F-01', 'chu-may'), false);
@@ -59,23 +68,17 @@ test('nav hides screens that are not built and marks child screens current', () 
   for (const role of ROLES) for (const [, , code] of NAV[role.slug]) assert.ok(codeAllowedInRole(code, role.slug), `${role.slug} ${code}`);
 });
 
-test('every screen module registers unique, role-consistent codes with titles', async () => {
-  const seen = new Map();
-  const modules = { common: 'chung', farmer: 'nong-dan', provider: 'chu-may', operator: 'tho-lai', coop: 'htx', admin: 'quan-tri' };
-  for (const [file, slug] of Object.entries(modules)) {
-    const { screens } = await import(new URL(`screens/${file}.js`, root));
-    assert.ok(Array.isArray(screens), file);
-    for (const s of screens) {
-      assert.match(s.code, /^[CFPOHA]-\d{2}$/);
-      assert.ok(!seen.has(s.code), `duplicate ${s.code}`);
-      seen.set(s.code, file);
-      assert.ok(codeAllowedInRole(s.code, slug) || (slug === 'chung' && s.code.startsWith('C-')), `${s.code} in ${file}`);
-      assert.equal(typeof s.title, 'string');
-      assert.ok(s.title.length > 0);
-      assert.equal(typeof s.render, 'function');
-    }
+test('router registry includes all 52 reference screens with titles and renderers', async () => {
+  const inventory = await readFile(new URL('../../docs/ui-demo-v2-screens.md', import.meta.url), 'utf8');
+  const expected = [...inventory.matchAll(/^\| ([CFPOHA]-\d{2}) \|/gm)].map((match) => match[1]);
+  assert.equal(expected.length, 52, '52 reference screens');
+  assert.deepEqual([...registry.keys()].sort(), expected.sort());
+  for (const [code, screen] of registry) {
+    assert.equal(screen.code, code);
+    assert.equal(typeof screen.title, 'string', code);
+    assert.ok(screen.title.trim(), code);
+    assert.equal(typeof screen.render, 'function', code);
   }
-  for (const code of ['C-01', 'C-02', 'C-03', 'C-04']) assert.ok(seen.has(code), code);
 });
 
 test('web/v2 code uses only vendored icons, no HTML parsing, no browser storage and no dashes in UI text', async () => {
