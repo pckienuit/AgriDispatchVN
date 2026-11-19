@@ -60,7 +60,7 @@ test('register, login, me, logout and revocation through real HTTP and PostgreSQ
   const reg = await json(server.url, '/api/auth/register', { email: '  Farmer@Example.COM ', password: PASSWORD, name: ' Nguyen An ' });
   assert.equal(reg.status, 201);
   const created = await reg.json();
-  assert.deepEqual(created, { user: { id: created.user.id, email: 'farmer@example.com', name: 'Nguyen An', roles: ['farmer'] } });
+  assert.deepEqual(created, { user: { id: created.user.id, email: 'farmer@example.com', phone: null, name: 'Nguyen An', roles: ['farmer'] } });
   assert.equal(JSON.stringify(created).includes('scrypt'), false);
 
   const login = await json(server.url, '/api/auth/login', { email: 'farmer@example.com', password: PASSWORD });
@@ -110,6 +110,30 @@ test('login throttle resets after a successful login and after its window expire
   // Expire the window in the DB; the next attempt starts a fresh window.
   await pool.query("UPDATE account.rate_limits SET window_ends_at = now() - interval '1 second'");
   assert.equal((await json(server.url, '/api/auth/login', { email: 'reset@example.com', password: PASSWORD })).status, 200);
+});
+
+test('phone registration and login normalize Vietnamese numbers and keep email accounts working', async (t) => {
+  const { serve, pool } = await fixture(t);
+  const server = await serve();
+  t.after(() => server.close());
+  const reg = await json(server.url, '/api/auth/register', { phone: '+84 912 345 678', password: PASSWORD, name: 'Tran Binh' });
+  assert.equal(reg.status, 201);
+  const created = await reg.json();
+  assert.deepEqual(created, { user: { id: created.user.id, email: null, phone: '0912345678', name: 'Tran Binh', roles: ['farmer'] } });
+  assert.equal((await json(server.url, '/api/auth/register', { phone: '0912.345.678', password: PASSWORD, name: 'Dup' })).status, 409);
+  for (const phone of ['0912 345 678', '84912345678', '0912345678']) {
+    const login = await json(server.url, '/api/auth/login', { phone, password: PASSWORD });
+    assert.equal(login.status, 200, phone);
+    assert.equal((await login.json()).user.phone, '0912345678');
+  }
+  assert.equal((await json(server.url, '/api/auth/login', { phone: '0912345678', password: 'wrong password 1' })).status, 401);
+  assert.equal((await json(server.url, '/api/auth/login', { phone: '0987654321', password: PASSWORD })).status, 401);
+  const session = await (await json(server.url, '/api/auth/login', { phone: '0912345678', password: PASSWORD })).json();
+  const me = await (await fetch(`${server.url}/api/me`, { headers: bearer(session.token) })).json();
+  assert.equal(me.user.phone, '0912345678');
+  const hash = `scrypt:v1:N=16384:r=8:p=1:${'A'.repeat(22)}:${'B'.repeat(86)}`;
+  await assert.rejects(pool.query('INSERT INTO account.users (name, password_hash) VALUES ($1, $2)', ['None', hash]), { code: '23514' });
+  await assert.rejects(pool.query('INSERT INTO account.users (phone, name, password_hash) VALUES ($1, $2, $3)', ['0112345678', 'Bad', hash]), { code: '23514' });
 });
 
 test('database rejects duplicate case variants, unknown roles and duplicate role grants', async (t) => {

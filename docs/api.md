@@ -34,10 +34,10 @@ User approved web administration on 18 November 2026: authenticated users reques
 
 | Method/path | Input | Result |
 | --- | --- | --- |
-| POST `/api/auth/register` | `email`, `password`, `name` | 201 user; duplicate 409; password minimum 12 characters, bounded to 128 |
-| POST `/api/auth/login` | `email`, `password` | 200 opaque `token`, `expiresAt`, `user`; invalid credentials 401, throttled 429 |
+| POST `/api/auth/register` | `phone` or `email` (exactly one), `password`, `name` | 201 user; duplicate 409; password minimum 12 characters, bounded to 128. Phone accepts Vietnamese mobile `0XXXXXXXXX`, `+84`/`84` prefix and space/dot/dash separators, stored as `0XXXXXXXXX` (migration 018). No OTP. |
+| POST `/api/auth/login` | `phone` or `email`, `password` | 200 opaque `token`, `expiresAt`, `user`; invalid credentials 401, throttled 429 (phone and email throttle keys are separate namespaces) |
 | POST `/api/auth/logout` | Bearer token | 204, invalidate current session |
-| GET `/api/me` | Bearer token | user id, name, roles; never password/hash |
+| GET `/api/me` | Bearer token | user id, email (nullable), phone (nullable), name, roles; never password/hash |
 | POST `/internal/introspect` | header `X-Service-Token`, JSON `token` | verified user or 401; server-to-server only |
 
 Session tokens: cryptographically random, hash stored in DB, bounded lifetime and revocation. Passwords: `node:crypto` scrypt, fresh salt, timing-safe comparison. Login throttle stored in PostgreSQL, not per-process memory. Tokens are sent in Authorization headers; UI keeps them in memory, not URLs. No cookie authentication unless CSRF protections are explicitly added.
