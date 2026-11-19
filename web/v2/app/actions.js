@@ -22,7 +22,7 @@ export function errorText(error) {
 export function apiButton(o) {
   const msg = h('p', { class: 'msg msg--error', role: 'alert', tabindex: '-1', hidden: true });
   let busy = false;
-  const btn = ui.button({ label: o.label, icon: o.icon, kind: o.kind || 'primary', size: o.size, block: o.block, disabled: o.disabled, onClick: () => (o.confirm ? ask() : go()) });
+  const btn = ui.button({ label: o.label, icon: o.icon, kind: o.kind || 'primary', size: o.size, block: o.block, disabled: o.disabled, onClick: () => { if (!busy) (o.confirm ? ask() : go()); } });
   async function go() {
     if (busy) return;
     busy = true;

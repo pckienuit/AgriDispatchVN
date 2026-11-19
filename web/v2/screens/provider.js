@@ -1333,9 +1333,9 @@ async function operatorsScreen(ctx) {
               render: (op) => h('div', { class: 'stack-sm' },
                 h('span', { class: 'provider-strong' }, op.name),
                 h('span', { class: 'small muted mono' }, shortId(op.id)),
-                profileById.get(op.id) ? h('div', { class: 'small' },
-                  h('span', null, `Kỹ năng tự khai: ${profileById.get(op.id).skills.join(', ') || 'Chưa khai'}`),
-                  ...profileById.get(op.id).certifications.map((cert) => h('span', { class: 'muted' }, `${cert.name}, hạn ${cert.expiresAt}, ${cert.verificationStatus === 'VERIFIED' ? 'đã được quản trị viên xác minh' : cert.verificationStatus === 'REJECTED' ? 'không được xác minh' : 'chưa xác minh'}`)))
+                profileById.get(op.id) ? h('div', { class: 'small stack-sm' },
+                  h('div', null, `Kỹ năng tự khai: ${profileById.get(op.id).skills.join(', ') || 'Chưa khai'}`),
+                  ...profileById.get(op.id).certifications.map((cert) => h('div', { class: 'muted' }, `${cert.name}, hạn ${cert.expiresAt}, ${cert.verificationStatus === 'VERIFIED' ? 'đã được quản trị viên xác minh' : cert.verificationStatus === 'REJECTED' ? 'không được xác minh' : 'chưa xác minh'}`)))
                   : h('span', { class: 'small muted' }, 'Chưa có hồ sơ tự khai.')),
             },
             {
@@ -1843,6 +1843,18 @@ async function money(ctx) {
 
 /* ---------- P-08: Tuyển thợ ---------- */
 
+// Điều khoản tin tuyển dùng chung cho P-08 (danh sách tin) và P-09 (chi tiết ứng viên).
+function jobTermsText(j) {
+  const wage = j.wageType ? ({ PER_HA: 'Theo ha', PER_SHIFT: 'Theo ca', NEGOTIABLE: 'Thỏa thuận' }[j.wageType] || '') : 'Chưa nêu tiền công';
+  const amount = j.wageAmountVnd ? ` · ${formatVnd(j.wageAmountVnd)}` : '';
+  const machine = j.machineType ? ` · ${MACHINE_TYPE_LABEL[j.machineType] || j.machineType}` : '';
+  return `${wage}${amount}${machine}`;
+}
+
+function jobSkillsText(j) {
+  return (j.requiredSkills || []).length ? `Kỹ năng: ${j.requiredSkills.join(', ')}` : null;
+}
+
 async function recruit(ctx) {
   const jobs = await loadMyJobs(ctx);
 
@@ -1925,8 +1937,8 @@ async function recruit(ctx) {
               h('strong', null, j.title),
               ui.badge(...(JOB_STATUS_BADGE[j.status] || [j.status, 'outline']))),
             h('div', { class: 'small muted' }, `${j.locality} · ${formatWindow(j.startAt, j.endAt)}`),
-            h('div', { class: 'small muted' }, `${j.wageType ? ({ PER_HA: 'Theo ha', PER_SHIFT: 'Theo ca', NEGOTIABLE: 'Thỏa thuận' }[j.wageType] || '') : 'Chưa nêu tiền công'}${j.wageAmountVnd ? ` · ${formatVnd(j.wageAmountVnd)}` : ''}${j.machineType ? ` · ${MACHINE_TYPE_LABEL[j.machineType] || j.machineType}` : ''}`),
-            (j.requiredSkills || []).length ? h('div', { class: 'small muted' }, `Kỹ năng: ${j.requiredSkills.join(', ')}`) : null,
+            h('div', { class: 'small muted' }, jobTermsText(j)),
+            jobSkillsText(j) ? h('div', { class: 'small muted' }, jobSkillsText(j)) : null,
             h('div', { class: 'small' }, `Đã nhận: ${j.acceptedCount}/${j.capacity} · Ứng viên: ${j.applicationCount}`),
             h('div', { class: 'btn-row' },
               ui.button({ label: `Xem ứng viên (${j.applicationCount})`, size: 'sm', kind: 'primary', href: ctx.url('chu-may', 'P-09', { id: j.id }) }),
@@ -2048,7 +2060,10 @@ async function applicantsScreen(ctx) {
       title: selectedJob.title,
       subtitle: `${selectedJob.locality} · ${formatWindow(selectedJob.startAt, selectedJob.endAt)}`,
       actions: ui.badge(...(JOB_STATUS_BADGE[selectedJob.status] || [selectedJob.status, 'outline'])),
-      body: applications.length
+      body: h('div', { class: 'stack-sm' },
+        h('div', { class: 'small muted' }, jobTermsText(selectedJob)),
+        jobSkillsText(selectedJob) ? h('div', { class: 'small muted' }, jobSkillsText(selectedJob)) : null,
+        applications.length
         ? ui.list(applications.map((app) => {
           const statusKey = applicationStatusKey(app);
           const badgeSpec = APP_STATUS_BADGE[statusKey] || [statusKey, 'outline'];
@@ -2089,7 +2104,7 @@ async function applicantsScreen(ctx) {
           icon: 'users',
           title: 'Chưa có ứng viên nào cho tin này',
           text: 'Khi thợ lái bấm ứng tuyển ở màn Tìm việc, hồ sơ sẽ hiện ở đây.',
-        }),
+        })),
     }));
 }
 

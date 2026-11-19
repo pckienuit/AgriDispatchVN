@@ -256,17 +256,22 @@ async function render(keepFocus) {
 
   const ctx = makeCtx(route, screen, mySeq);
   let body;
+  let loadingShown = false;
   try {
     const out = screen.render(ctx);
     if (out && typeof out.then === 'function') {
-      if (!keepFocus) paint(frame(route, screen, ui.loading('Đang tải dữ liệu từ máy chủ'), null), focusMain);
+      if (!keepFocus) {
+        paint(frame(route, screen, ui.loading('Đang tải dữ liệu từ máy chủ'), null), focusMain);
+        loadingShown = true;
+      }
       body = await out;
       if (mySeq !== seq) return;
-      if (!keepFocus) ui.dispose();
     } else body = out;
   } catch (error) {
     if (mySeq !== seq) return;
     body = ui.errorState({ title: 'Chưa tải được màn này', text: errorText(error), retry: () => render(true) });
+  } finally {
+    if (loadingShown && mySeq === seq) ui.dispose();
   }
   if (mySeq !== seq) return;
   paint(frame(route, screen, body, ctx.getAction()), focusMain, restoreKey);

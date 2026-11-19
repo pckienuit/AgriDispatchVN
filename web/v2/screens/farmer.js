@@ -1762,6 +1762,8 @@ async function settlementScreen(ctx) {
               } else {
                 amountInput.readOnly = true;
                 refInput.readOnly = true;
+                // Re-render so the saved-attempt note and retry label show; the screen is otherwise stale.
+                setTimeout(() => ctx.rerender(), 0);
               }
               throw error;
             }
