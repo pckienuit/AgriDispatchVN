@@ -16,7 +16,7 @@ UI hiện tại của nhánh cloud đi theo một luồng chung kiểu cửa hà
 | D4 | Đăng nhập bằng số điện thoại và mật khẩu, bố cục theo màn C-01. Không gửi OTP thật. |
 | D5 | Có cọc (F-09). Cọc là bản ghi chuyển khoản ngoài hệ thống, bên trả báo và bên nhận xác nhận. Chỉ mở sau khi chủ máy nhận gói và HTX gọi xác nhận. Mã VietQR và mức 10% gắn nhãn mô phỏng, giả định. |
 | D6 | Theo dõi máy và buồng lái (F-10, O-02, H-06) dùng telemetry mô phỏng phía server, có nhãn mô phỏng. |
-| D7 | Chưa chốt: HTX có thẩm định thực địa trước ca (H-04) không; HTX hòa giải cấp 1 kèm tránh xung đột lợi ích hay giữ quản trị độc lập; có địa bàn HTX và giới hạn 3 HTX mỗi xã (H-01, A-02) không. Không làm các màn này khi chưa chốt. |
+| D7 | Kiên chốt HTX thẩm định thực địa trước ca (H-04) và hòa giải cấp 1 (H-08). Khi có xung đột lợi ích, chuyển cho quản trị độc lập. Vẫn cần hai bên tự đồng ý cùng phiên bản; HTX không đồng ý thay. Quản trị gán địa bàn HTX theo xã (H-01, A-02), không áp giới hạn cứng số HTX mỗi xã. Việc gán địa bàn không thay thế quyền điều phối được chủ đơn ủy quyền. |
 | D8 | Phí phần mềm, hoa hồng HTX, phí tháng chủ máy chỉ hiển thị số giả định, không thu phí. |
 | D9 | Gom cụm theo bán kính 1,5 km và ngưỡng diện tích chỉ là gợi ý có nhãn giả định; HTX chốt tay. |
 | D10 | Luồng chính theo dịch vụ gặt. Danh mục giữ 3 dịch vụ mô phỏng. |
@@ -28,6 +28,6 @@ Mỗi giai đoạn là một hoặc vài commit nhỏ, mỗi commit đạt lint,
 1. Phase 0: token, CSS, font, icon, bộ thành phần `ui`, khung vai trò và router `#/<vai-trò>/<mã>` dạng ES module, nối API thật. UI mới phát triển ở `web/v2/` để UI cũ và bộ kiểm thử trình duyệt cũ vẫn chạy cho tới khi thay thế xong.
 2. Phase 1: 21 màn đã có API, gồm tranh chấp, tuyển thợ, ca máy, duyệt vai trò, hoạt động và dời lịch.
 3. Phase 2: 22 màn cần mở rộng API và DB, gồm ranh thửa (JSON tọa độ, server tính diện tích, không bật PostGIS), thông tin đặt gặt, phụ phí giả định, hồ sơ máy và thợ, trạng thái ca, tin tuyển, tiền công, tham số quản trị.
-4. Phase 3: 9 màn chưa có, sau khi chốt D7.
+4. Phase 3: bổ sung các chức năng chưa có theo quyết định đã chốt. H-04, H-08, H-01 và A-02 theo mục D7 trong kế hoạch.
 
 Bảng đối chiếu 52 màn nằm ở [ui-demo-v2-screens.md](ui-demo-v2-screens.md). Kế hoạch thực thi: [ui-demo-v2-plan.md](ui-demo-v2-plan.md).

@@ -25,7 +25,9 @@ File cục bộ ngoài repo (không commit) ở `/home/pckien/.agridispatch-loca
 
 Khởi động lại khi cần: `docker compose --env-file .env -f infra/compose.yaml up -d --wait db`, rồi `bash ~/.agridispatch-local/v2dev.sh &`, rồi `curl -s http://127.0.0.1:3100/ready`.
 
-## 3. Phase 1: 21 màn trên API sẵn có (không đổi server)
+## 3. Phase 1: chuyển UI sang API sẵn có
+
+Bảng 52 màn là ảnh chụp của đợt audit: 21 màn khi đó có đủ API. Danh sách triển khai dưới đây có cả các màn chỉ làm phần API đã hỗ trợ; không tính những màn đó là hoàn thiện theo đặc tả demo. Hai luồng D7 mở rộng backend riêng, xem mục 6.
 
 Năm vai trò độc lập, mỗi vai trò chỉ sửa đúng một file `web/v2/screens/<vai-trò>.js`, nên chạy song song được. Giao cho mỗi executor: nội dung `v2-brief.md` + `v2-task-<vai-trò>.md`.
 
@@ -48,12 +50,12 @@ Cổng hoàn thành Phase 1 (người duyệt chạy lại, không tin báo cáo
 1. `npx eslint .` sạch; `npm test` xanh; `node --test server/tests/web-v2.test.js` xanh.
 2. Kịch bản trình duyệt mỗi vai trò trong `~/.agridispatch-local/v2check/<vai-trò>.mjs` chạy qua mọi màn, có ít nhất một thao tác ghi mỗi màn có ghi, 0 page error, `scrollWidth == innerWidth` ở 390x844 và khung chuẩn của vai trò (tablet 1024x768, desk 1440x900).
 3. Một kịch bản xuyên vai trò `e2e.mjs`: nông dân tạo thửa và đặt gặt, ủy quyền HTX; HTX gom gói; chủ máy đăng tin, thợ ứng tuyển, chủ máy gửi đề nghị, thợ nhận; chủ máy nhận gói với máy và thợ; nông dân xác nhận ruộng; thợ chạy, tạm dừng, xong ca; nghiệm thu hai bên; ghi nhận và xác nhận chuyển tiền; mở khiếu nại có ảnh; admin phân công hòa giải, đề xuất, hai bên đồng ý.
-4. Xem ảnh chụp từng màn, sửa lỗi thị giác. Không có ký tự gạch ngang dài trong UI.
+4. Đối chiếu từng màn với demo v2, Taste Skill và [UI UX Pro Max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill). Kiểm focus bàn phím, nhãn form, tương phản chữ thường tối thiểu 4.5:1, kích thước vùng bấm và các trạng thái tải/rỗng/lỗi. Xem ảnh thực tế ở kích thước theo vai trò; không có ký tự gạch ngang dài trong UI.
 5. Commit theo vai trò: `feat(web-v2): <vai-trò> screens on real API`.
 
 ## 4. Phase 2: 22 màn cần mở rộng API và DB
 
-Làm tuần tự từng gói (migration đánh số liên tiếp từ `019`, không chạy song song vì đụng số migration và `docs/api.md`). Mỗi gói: migration + API + unit + integration + màn + kịch bản trình duyệt + cập nhật `docs/api.md`.
+Hai migration D7 giữ số `019` (thẩm định) và `020` (hòa giải). Các gói sau dùng số còn trống kế tiếp sau khi tích hợp D7. Điều phối viên quản lý thứ tự migration và cập nhật `docs/api.md`. Mỗi gói có migration, API, unit, integration, UI và kịch bản trình duyệt.
 
 | Thứ tự | Gói | Màn | Nội dung |
 | --- | --- | --- | --- |
@@ -82,13 +84,12 @@ Làm tuần tự từng gói (migration đánh số liên tiếp từ `019`, kh�
 | F-10, O-02, H-06 | D6 | Telemetry mô phỏng phía server (tiến trình sinh dữ liệu có nhãn), không giả làm thiết bị thật |
 | H-09 | D8 | Hoa hồng HTX chỉ hiển thị số giả định |
 
-## 6. Còn chặn: chờ Kiên chốt D7
+## 6. D7: thẩm định, hòa giải và địa bàn HTX
 
-Không làm khi chưa có câu trả lời:
-
-- H-04: HTX có bước thẩm định thực địa trước khi bắt đầu ca không.
-- H-08: HTX hòa giải cấp 1 (kèm tránh xung đột lợi ích) hay giữ admin độc lập như hiện tại.
-- H-01, A-02: có địa bàn HTX và giới hạn 3 HTX mỗi xã không.
+- H-04: HTX được giao đơn ghi kết quả thẩm định thực địa trước ca. Kiểm ở máy chủ trước khi thợ bắt đầu ca; xác nhận của nông dân và kết quả HTX là hai ghi nhận riêng.
+- H-08: HTX hòa giải cấp 1. HTX có xung đột lợi ích phải chuyển cho quản trị độc lập. Hai bên tự đồng ý đúng phiên bản; hòa giải viên không đồng ý thay, nền tảng không chuyển tiền.
+- Tích hợp các màn liên quan sau khi API và test nghiệp vụ ổn định. Thêm ca kiểm xuyên vai trò: chưa thẩm định/không đạt thì không mở ca; hòa giải thành công và chuyển cấp khi có xung đột lợi ích.
+- H-01 và A-02: quản trị gán địa bàn theo xã, không giới hạn cứng số HTX mỗi xã. HTX xem địa bàn của mình; việc gán địa bàn không tự cấp quyền đọc hoặc điều phối đơn chưa được chủ đơn ủy quyền.
 
 ## 7. Sau khi đủ màn
 
