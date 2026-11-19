@@ -30,4 +30,4 @@ Mỗi giai đoạn là một hoặc vài commit nhỏ, mỗi commit đạt lint,
 3. Phase 2: 22 màn cần mở rộng API và DB, gồm ranh thửa (JSON tọa độ, server tính diện tích, không bật PostGIS), thông tin đặt gặt, phụ phí giả định, hồ sơ máy và thợ, trạng thái ca, tin tuyển, tiền công, tham số quản trị.
 4. Phase 3: 9 màn chưa có, sau khi chốt D7.
 
-Bảng đối chiếu 52 màn nằm ở [ui-demo-v2-screens.md](ui-demo-v2-screens.md).
+Bảng đối chiếu 52 màn nằm ở [ui-demo-v2-screens.md](ui-demo-v2-screens.md). Kế hoạch thực thi: [ui-demo-v2-plan.md](ui-demo-v2-plan.md).
