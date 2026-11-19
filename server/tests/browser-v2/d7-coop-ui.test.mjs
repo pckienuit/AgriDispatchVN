@@ -589,6 +589,115 @@ try {
   const focusedTag = await browser.ev(`document.activeElement?.tagName || ''`);
   assert.ok(focusedTag.length > 0, 'keyboard focus must land on an interactive element');
 
+  // ---------- P-10: chủ máy phản hồi khiếu nại đang mở (d3 is OPEN, provider is respondent) ----------
+  const responsesOf = async (disputeId, token) => (await must('GET', `/api/disputes/${disputeId}`, { token }))
+    .data.events.filter((ev) => ev.type === 'RESPONSE_ADDED');
+  const asideText = () => browser.ev(`document.querySelector('aside')?.innerText || ''`);
+  const loginAs = async (who) => {
+    await browser.waitFor(`!!document.querySelector('input[name=phone]')`);
+    await browser.fill('input[name=phone]', who.phone);
+    await browser.fill('input[name=password]', password);
+    await browser.click('form button[type=submit]');
+    await browser.waitFor(`location.hash.startsWith('#/${who === farmer ? 'nong-dan' : 'chu-may'}/')`);
+  };
+  const logoutViaAccount = async () => {
+    await browser.hash('#/chung/C-02');
+    await browser.waitText('Đăng xuất');
+    await browser.ev(`[...document.querySelectorAll('button')].find((b) => b.textContent.includes('Đăng xuất')).click()`);
+    await browser.waitFor(`location.hash.startsWith('#/chung/C-01')`);
+  };
+
+  await logoutViaAccount();
+  await loginAs(provider);
+  await browser.hash(`#/chu-may/P-10?id=${d3.id}`);
+  await browser.waitText('Gửi phản hồi');
+  assert.equal((await responsesOf(d3.id, provider.token)).length, 0, 'no P-10 response before the provider submits');
+
+  // Blank and whitespace-only text: UI refuses without a request; API refuses with 400 and writes no event.
+  await browser.fill('textarea[name=text]', '   ');
+  await browser.clickText('Gửi phản hồi', 'button[type=submit]');
+  await browser.waitText('Nhập nội dung phản hồi từ 1 đến 2000 ký tự.');
+  assert.equal((await responsesOf(d3.id, provider.token)).length, 0, 'blank UI submit must not write an event');
+  const blankApi = await api('POST', `/api/disputes/${d3.id}/responses`, { token: provider.token, body: { text: '   ' } });
+  assert.equal(blankApi.status, 400, `blank API response must be 400, got ${blankApi.status}`);
+  assert.equal(blankApi.data.error.code, 'VALIDATION_FAILED');
+  assert.equal((await responsesOf(d3.id, provider.token)).length, 0, 'blank API submit must not write an event');
+
+  // One unique response through the keyboard path (focus submit, Enter).
+  const token = `P10-${randomBytes(4).toString('hex')}`;
+  const responseText = `Chủ máy phản hồi ${token}: số công trong ca máy khác biên bản, đề nghị đo lại cùng HTX.`;
+  await browser.fill('textarea[name=text]', responseText);
+  await browser.ev(`[...document.querySelectorAll('button[type=submit]')].find((b) => b.textContent.trim() === 'Gửi phản hồi').focus()`);
+  await browser.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+  await browser.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+  await browser.waitText(token);
+  const afterSubmit = await responsesOf(d3.id, provider.token);
+  assert.equal(afterSubmit.length, 1, `exactly one response event expected, got ${afterSubmit.length}`);
+  assert.equal(afterSubmit[0].actorId, provider.user.id, 'response actor must be the provider');
+  assert.equal(afterSubmit[0].data.text, responseText, 'stored response text must match submitted text');
+  const aside1 = await asideText();
+  assert.ok(aside1.includes('Đang mở'), 'open dispute must keep status Đang mở after a response');
+  for (const bad of ['Đã hòa giải', 'Đóng chưa giải quyết', 'Lý do đóng']) {
+    assert.equal(aside1.includes(bad), false, `response must not read as case resolution: found "${bad}"`);
+  }
+  assert.equal(await browser.ev(`document.querySelector('textarea[name=text]')?.value ?? null`), '', 'form clears after success');
+  log('P-10 focus after success (report only)', await browser.ev(`document.activeElement?.tagName || 'none'`));
+  await assertLayout('P-10-open-1440');
+  await browser.shot(`${SHOTS}/p10-open-1440.png`);
+
+  // Reload drops the in-memory session; sign in again and read the response back from UI and API.
+  await browser.send('Page.reload', { ignoreCache: true });
+  await loginAs(provider);
+  await browser.hash(`#/chu-may/P-10?id=${d3.id}`);
+  await browser.waitText(token);
+  const readbackProvider = await responsesOf(d3.id, provider.token);
+  assert.equal(readbackProvider.length, 1, 'reload readback must return the single persisted response');
+  assert.equal(readbackProvider[0].data.text, responseText, 'reload readback text must match');
+  assert.equal(await browser.ev(`document.querySelectorAll('textarea[name=text]').length`), 1, 'open dispute keeps the response form');
+  await browser.viewport(390, 844, true);
+  await browser.waitText(token);
+  await assertLayout('P-10-open-390');
+  await browser.shot(`${SHOTS}/p10-open-390.png`);
+  await browser.viewport(1440, 900, false);
+
+  // Closed case (d1 RESOLVED, provider is respondent): no response form, no consent control, no new event.
+  await browser.hash(`#/chu-may/P-10?id=${d1.id}`);
+  await browser.waitFor(`(document.querySelector('aside')?.innerText || '').includes('Đã hòa giải')`);
+  assert.equal(await browser.ev(`document.querySelectorAll('textarea[name=text]').length`), 0, 'closed case must not show response input');
+  assert.equal(await browser.ev(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Gửi phản hồi')`), false, 'closed case must not show send control');
+  assert.equal(await browser.ev(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes('Đồng ý phương án'))`), false, 'closed case must not show consent control');
+  assert.equal((await responsesOf(d1.id, provider.token)).length, 0, 'closed case must not gain a response event');
+
+  // Admin-closed unresolved case (d2 escalated to ADMIN, provider is respondent): same closed rules, plus API 409.
+  // close-unresolved needs the uninvolved admin to be the assigned mediator, so assign via the existing route first.
+  const assignRes = await api('POST', `/api/disputes/${d2.id}/mediator`, { token: admin.token, body: { mediatorId: admin.user.id } });
+  assert.equal(assignRes.status, 200, `admin mediator assign failed (${assignRes.status}): ${JSON.stringify(assignRes.data)}`);
+  const closeRes = await api('POST', `/api/disputes/${d2.id}/close-unresolved`, { token: admin.token, body: { reason: 'Synthetic P-10 closure' } });
+  assert.equal(closeRes.status, 200, `admin close-unresolved failed (${closeRes.status}): ${JSON.stringify(closeRes.data)}`);
+  await logoutViaAccount();
+  await loginAs(provider);
+  await browser.hash(`#/chu-may/P-10?id=${d2.id}`);
+  await browser.waitText('Đóng chưa giải quyết');
+  assert.equal(await browser.ev(`document.querySelectorAll('textarea[name=text]').length`), 0, 'closed-unresolved case must not show response input');
+  assert.equal(await browser.ev(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Gửi phản hồi')`), false, 'closed-unresolved case must not show send control');
+  const aside2 = await asideText();
+  assert.equal(aside2.includes('Đã hòa giải'), false, 'closed-unresolved must not read as resolved');
+  const closedApi = await api('POST', `/api/disputes/${d2.id}/responses`, { token: provider.token, body: { text: 'Synthetic late reply' } });
+  assert.equal(closedApi.status, 409, `late response on closed case must be 409, got ${closedApi.status}`);
+  assert.equal(closedApi.data.error.code, 'DISPUTE_NOT_OPEN');
+  assert.equal((await responsesOf(d2.id, provider.token)).length, 0, 'closed-unresolved case must not gain a response event');
+
+  // Farmer (claimant) reads the same persisted response from F-13 and API; farmer has no response control.
+  await logoutViaAccount();
+  await loginAs(farmer);
+  await browser.hash(`#/nong-dan/F-13?id=${d3.id}`);
+  await browser.waitText(token);
+  const readbackFarmer = await responsesOf(d3.id, farmer.token);
+  assert.equal(readbackFarmer.length, 1, 'farmer must read the same single response');
+  assert.equal(readbackFarmer[0].data.text, responseText, 'farmer readback text must match');
+  assert.equal(browser.consoleErrors.length, 0, `Console errors in P-10 flow: ${JSON.stringify(browser.consoleErrors)}`);
+  log('P-10 response readback OK (provider UI+API after reload, farmer UI+API, closed case blocked)');
+
   assert.equal(browser.errors.length, 0, `Runtime JS errors: ${JSON.stringify(browser.errors)}`);
   assert.equal(browser.consoleErrors.length, 0, `Console errors: ${JSON.stringify(browser.consoleErrors)}`);
   log('ALL CHECKS PASSED (H-02, H-03, H-04, H-05, H-06, H-07, H-08, 1440x900 & 390x844, zero console/runtime errors)');
