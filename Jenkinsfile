@@ -1,4 +1,4 @@
-// Jenkins build job for the IS402 cloud branch (job path agridispatch/cloud).
+// Jenkins build job for the B1 demo branch (job path agridispatch/cloud-demo-b1).
 // Triggered by the Azure DevOps Build stage through server/scripts/jenkins-build.js with BUILD_SHA and PUBLISH.
 // Jenkins global environment (set by the Jenkins admin, never by request parameters):
 //   AGRI_REPO_URL          https clone URL of the repository
@@ -15,12 +15,12 @@ pipeline {
     buildDiscarder(logRotator(numToKeepStr: '20'))
   }
   parameters {
-    string(name: 'BUILD_SHA', trim: false, description: 'Full lowercase 40-character commit SHA. Must be the current head of cloud/is402-2026-11-24.')
+    string(name: 'BUILD_SHA', trim: false, description: 'Full lowercase 40-character commit SHA. Must be the current head of demo/cl05-b1.')
     booleanParam(name: 'PUBLISH', defaultValue: false, description: 'Push SHA-tagged images to ACR and record their digests. Off by default.')
   }
   environment {
-    APPROVED_BRANCH = 'cloud/is402-2026-11-24'
-    RESOURCE_GROUP = 'rg-agridispatch-bt05'
+    APPROVED_BRANCH = 'demo/cl05-b1'
+    RESOURCE_GROUP = 'rg-is402-agri'
     BUILD_SHA = "${params.BUILD_SHA}"
     PUBLISH = "${params.PUBLISH}"
   }
@@ -133,7 +133,7 @@ YAML
             export DOCKER_CONFIG="$CI_EPH/docker-config"
             mkdir -p "$DOCKER_CONFIG" && chmod 700 "$DOCKER_CONFIG"
             test -n "${AZURE_SUBSCRIPTION_ID:-}"
-            test "$RESOURCE_GROUP" = "rg-agridispatch-bt05"
+            test "$RESOURCE_GROUP" = "rg-is402-agri"
             ACR_NAME="${ACR_REGISTRY%.azurecr.io}"
             active_sub=$(az account show --query id --output tsv)
             test "$(printf '%s' "$active_sub" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$AZURE_SUBSCRIPTION_ID" | tr '[:upper:]' '[:lower:]')"

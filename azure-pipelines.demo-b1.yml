@@ -1,0 +1,82 @@
+trigger:
+  batch: true
+  branches:
+    include:
+      - demo/cl05-b1
+
+pr: none
+
+lockBehavior: sequential
+
+pool:
+  name: agridispatch-jenkins-bridge
+
+variables:
+  - group: agridispatch-cloud-ci
+
+stages:
+  - stage: Build
+    displayName: Test and publish the demo release via Jenkins
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/demo/cl05-b1'), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+    jobs:
+      - job: JenkinsBuild
+        timeoutInMinutes: 75
+        steps:
+          - checkout: self
+            clean: true
+            fetchDepth: 0
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '26.x'
+          - bash: |
+              set -euo pipefail
+              git diff --quiet 62354bc6b794e00767796319f607aa42a6441749 HEAD -- db/migrations
+              mkdir -p "$ARTIFACT_DIR"
+              node server/scripts/jenkins-build.js run > "$ARTIFACT_DIR/jenkins-result.json"
+            displayName: Require the staging schema and publish the tested SHA
+            env:
+              BUILD_SHA: $(Build.SourceVersion)
+              PUBLISH: 'true'
+              ACR_REGISTRY: acris402agri.azurecr.io
+              JENKINS_JOB: agridispatch/cloud-demo-b1
+              JENKINS_URL: $(JENKINS_URL)
+              JENKINS_USER: $(JENKINS_USER)
+              JENKINS_TOKEN: $(JENKINS_TOKEN)
+              ARTIFACT_DIR: $(Build.ArtifactStagingDirectory)
+          - publish: $(Build.ArtifactStagingDirectory)/jenkins-result.json
+            artifact: jenkins-build-result
+
+  - stage: DeployDemoB1
+    displayName: Deploy and verify the two demo Web Apps
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/demo/cl05-b1'), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+    jobs:
+      - deployment: DeployWebApps
+        environment: agridispatch-is402-demo-b1
+        timeoutInMinutes: 20
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  clean: true
+                - task: NodeTool@0
+                  inputs:
+                    versionSpec: '26.x'
+                - download: current
+                  artifact: jenkins-build-result
+                - task: AzureCLI@2
+                  displayName: Deploy digest with rollback and readback
+                  inputs:
+                    azureSubscription: agridispatch-demo-b1
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      node server/scripts/cloud/deploy-demo-b1.js "$RELEASE_RESULT"
+                  env:
+                    BUILD_SHA: $(Build.SourceVersion)
+                    DEMO_AZURE_SUBSCRIPTION_ID: $(DEMO_AZURE_SUBSCRIPTION_ID)
+                    BUDGET_APPROVAL_ID: $(BUDGET_APPROVAL_ID)
+                    QUOTA_CHECKED_AT: $(QUOTA_CHECKED_AT)
+                    RELEASE_RESULT: $(Pipeline.Workspace)/jenkins-build-result/jenkins-result.json

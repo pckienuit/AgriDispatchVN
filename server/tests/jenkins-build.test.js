@@ -446,7 +446,7 @@ test('Jenkinsfile declares literal BUILD_SHA (no trim: true) and PUBLISH=false p
   assert.doesNotMatch(jenkinsfile, /string\(name: 'BUILD_SHA'[^)]*trim:\s*true/);
   assert.match(jenkinsfile, /booleanParam\(name: 'PUBLISH', defaultValue: false/);
   assert.match(jenkinsfile, /params\.BUILD_SHA ==~ \/\[0-9a-f\]\{40\}\//);
-  assert.match(jenkinsfile, /APPROVED_BRANCH = 'cloud\/is402-2026-11-24'/);
+  assert.match(jenkinsfile, /APPROVED_BRANCH = 'demo\/cl05-b1'/);
   assert.match(jenkinsfile, /if \[ "\$head" != "\$BUILD_SHA" \]/);
   assert.match(jenkinsfile, /skipDefaultCheckout\(true\)/);
 });
@@ -465,7 +465,7 @@ test('Jenkinsfile never interpolates request parameters inside shell bodies and 
 
 test('Jenkinsfile publishes only behind PUBLISH gate, isolates DOCKER_CONFIG, verifies subscription/RG/ACR id and passes BUILD_SHA to Function build', () => {
   assert.match(jenkinsfile, /stage\('Publish to ACR'\) \{\s*when \{ expression \{ params\.PUBLISH \} \}/);
-  assert.match(jenkinsfile, /RESOURCE_GROUP = 'rg-agridispatch-bt05'/);
+  assert.match(jenkinsfile, /RESOURCE_GROUP = 'rg-is402-agri'/);
   assert.match(jenkinsfile, /export DOCKER_CONFIG="\$CI_EPH\/docker-config"/);
   assert.match(jenkinsfile, /DOCKER_CONFIG="\$CI_EPH\/docker-config" docker logout "\$ACR_REGISTRY"/);
   assert.doesNotMatch(jenkinsfile, /^[ \t]*docker logout/m);
