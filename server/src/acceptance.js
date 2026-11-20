@@ -3,7 +3,7 @@ import { hasOpenDispute } from './disputes.js';
 
 // G7b: versioned booking acceptance and payer-reported external payment acknowledgments.
 // No funds move. A payment row is a payer claim (REPORTED) until the assigned provider confirms it.
-// Amounts are integer VND as decimal strings. Surcharges, fees, deposits and VAT are not modelled.
+// Amounts are integer VND as decimal strings. Surcharges, fees and VAT are not modelled.
 // ponytail: agreed total is the proposal total, no surcharge rule. Upgrade: versioned pricing rule once agreed.
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -163,22 +163,39 @@ async function financialSummary(client, bookingId, acceptance) {
   const consents = await consentsFor(client, bookingId, acceptance.version);
   if (!(consents.owner && consents.provider)) return null;
   const { rows } = await client.query(
-    `SELECT COALESCE(SUM(p.amount_vnd) FILTER (WHERE c.id IS NOT NULL), 0)::text AS confirmed,
-            COALESCE(SUM(p.amount_vnd) FILTER (WHERE c.id IS NULL), 0)::text AS reported
-       FROM dispatch.payments p
-       LEFT JOIN dispatch.payment_events c ON c.payment_id = p.id AND c.event_type = 'PAYMENT_CONFIRMED'
-      WHERE p.booking_id = $1`,
+    `SELECT COALESCE(SUM(amount_vnd) FILTER (WHERE confirmed AND NOT deposit), 0)::text AS confirmed,
+            COALESCE(SUM(amount_vnd) FILTER (WHERE NOT confirmed AND NOT deposit), 0)::text AS reported,
+            COALESCE(SUM(amount_vnd) FILTER (WHERE confirmed AND deposit), 0)::text AS confirmed_deposit,
+            COALESCE(SUM(amount_vnd) FILTER (WHERE NOT confirmed AND deposit), 0)::text AS reported_deposit
+       FROM (
+         SELECT p.amount_vnd, c.id IS NOT NULL AS confirmed, false AS deposit
+           FROM dispatch.payments p
+           LEFT JOIN dispatch.payment_events c ON c.payment_id = p.id AND c.event_type = 'PAYMENT_CONFIRMED'
+          WHERE p.booking_id = $1
+         UNION ALL
+         SELECT d.amount_vnd, c.id IS NOT NULL, true
+           FROM dispatch.deposits d
+           LEFT JOIN dispatch.deposit_events c ON c.deposit_id = d.id AND c.event_type = 'DEPOSIT_CONFIRMED'
+          WHERE d.booking_id = $1
+       ) amounts`,
     [bookingId],
   );
   const agreed = BigInt(acceptance.total_vnd);
   const confirmed = BigInt(rows[0].confirmed);
   const reported = BigInt(rows[0].reported);
+  const confirmedDeposit = BigInt(rows[0].confirmed_deposit);
+  const reportedDeposit = BigInt(rows[0].reported_deposit);
+  const balance = agreed - confirmed - confirmedDeposit;
+  const available = balance - reported - reportedDeposit;
   return {
     agreedVnd: agreed.toString(),
     confirmedVnd: confirmed.toString(),
     reportedVnd: reported.toString(),
-    outstandingVnd: (agreed - confirmed).toString(),
-    availableToReportVnd: (agreed - confirmed - reported).toString(),
+    confirmedDepositVnd: confirmedDeposit.toString(),
+    reportedDepositVnd: reportedDeposit.toString(),
+    outstandingVnd: (balance > 0n ? balance : 0n).toString(),
+    availableToReportVnd: (available > 0n ? available : 0n).toString(),
+    excessConfirmedVnd: (balance < 0n ? -balance : 0n).toString(),
   };
 }
 
@@ -283,6 +300,8 @@ async function reportPayment(pool, actor, bookingId, input) {
       if (same.rows[0].amount_vnd !== input.amountVnd) throw fail(409, 'REFERENCE_CONFLICT');
       return { status: 200, body: { payment: await paymentById(client, same.rows[0].id), summary } };
     }
+    const deposit = await client.query('SELECT 1 FROM dispatch.deposits WHERE booking_id = $1 AND reference = $2', [bookingId, input.reference]);
+    if (deposit.rowCount) throw fail(409, 'REFERENCE_CONFLICT');
     if (BigInt(input.amountVnd) > BigInt(summary.availableToReportVnd)) throw fail(409, 'AMOUNT_EXCEEDS_OUTSTANDING');
     const inserted = await client.query(
       'INSERT INTO dispatch.payments (booking_id, acceptance_version, payer_id, amount_vnd, reference) VALUES ($1, $2, $3, $4, $5) RETURNING id',
@@ -319,7 +338,7 @@ async function confirmPayment(pool, actor, paymentId) {
       [paymentId],
     );
     if (!done.rowCount) {
-      if (BigInt(summary.confirmedVnd) + BigInt(target.amount_vnd) > BigInt(summary.agreedVnd)) throw fail(409, 'OVER_CONFIRMED');
+      if (BigInt(target.amount_vnd) > BigInt(summary.outstandingVnd)) throw fail(409, 'OVER_CONFIRMED');
       await client.query("INSERT INTO dispatch.payment_events (payment_id, event_type, actor_id) VALUES ($1, 'PAYMENT_CONFIRMED', $2)", [paymentId, actor.id]);
     }
     return {

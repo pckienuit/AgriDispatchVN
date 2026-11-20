@@ -1,5 +1,5 @@
 import express from 'express';
-import { canReviewDispute } from './disputes.js';
+import { canReviewDispute, isActiveMediatorIndependent } from './disputes.js';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = (status, code) => Object.assign(new Error(code), { status, code });
@@ -31,13 +31,7 @@ async function lockedCase(c, disputeId) {
 }
 async function independent(c, d, actor) {
   if (actor.id !== d.mediator_id) throw fail(404, 'NOT_FOUND');
-  const valid = await c.query(`SELECT 1 FROM account.user_roles r WHERE r.user_id=$1 AND r.role='admin'
-    AND $1 NOT IN ($2::uuid,$3::uuid) AND NOT EXISTS (
-      SELECT 1 FROM dispatch.bookings b LEFT JOIN dispatch.package_bookings pb ON pb.booking_id=b.id
-      LEFT JOIN dispatch.packages p ON p.id=pb.package_id WHERE b.id=$4
-      AND $1 IN(b.owner_id,b.coordinator_id,p.coop_id,p.provider_id,p.operator_id))`,
-  [actor.id, d.claimant_id, d.respondent_id, d.booking_id]);
-  if (!valid.rowCount) throw fail(403, 'RECUSAL_REQUIRED');
+  if (!(await isActiveMediatorIndependent(c, d, actor.id))) throw fail(403, 'RECUSAL_REQUIRED');
 }
 const current = async (c, id) => (await c.query('SELECT * FROM dispatch.remedy_proposals WHERE dispute_id=$1 ORDER BY version DESC LIMIT 1', [id])).rows[0];
 const dto = (d) => ({ id: d.id, bookingId: d.booking_id, status: d.status, closedAt: d.closed_at?.toISOString() ?? null, closureReason: d.closure_reason, obligationsDisputed: d.status === 'CLOSED_UNRESOLVED' });
@@ -59,7 +53,7 @@ export function createRemedyRouter({ pool, authenticate }) {
     }
   };
   router.post('/api/disputes/:id/proposals', authenticate, handle(async (c, req) => {
-    if (!req.actor.roles.includes('admin')) throw fail(403, 'FORBIDDEN');
+    if (!req.actor.roles.some((role) => role === 'admin' || role === 'coop')) throw fail(403, 'FORBIDDEN');
     const proposalText = text(input(req.body, ['text']).text);
     const d = await lockedCase(c, identifier(req.params.id));
     await independent(c, d, req.actor);
@@ -104,6 +98,7 @@ export function createRemedyRouter({ pool, authenticate }) {
     const reason = text(input(req.body, ['reason']).reason);
     const d = await lockedCase(c, identifier(req.params.id));
     await independent(c, d, req.actor);
+    if (d.mediation_level !== 'ADMIN') throw fail(403, 'FORBIDDEN');
     if (d.status !== 'OPEN') throw fail(409, 'DISPUTE_NOT_OPEN');
     await event(c, d, req.actor, 'CLOSED_UNRESOLVED', null, reason);
     const updated = await c.query("UPDATE dispatch.disputes SET status='CLOSED_UNRESOLVED',closed_at=now(),closure_reason=$2 WHERE id=$1 RETURNING *", [d.id, reason]);
@@ -111,8 +106,9 @@ export function createRemedyRouter({ pool, authenticate }) {
   }));
   router.get('/api/disputes/:id/proposals', authenticate, handle(async (c, req) => {
     const d = await lockedCase(c, identifier(req.params.id));
-    if (![d.claimant_id, d.respondent_id, d.mediator_id].includes(req.actor.id)
-      && !await canReviewDispute(c,req.actor,d.id)) throw fail(404, 'NOT_FOUND');
+    const isParty = [d.claimant_id, d.respondent_id].includes(req.actor.id);
+    if (!isParty && !(await isActiveMediatorIndependent(c, d, req.actor.id))
+      && !await canReviewDispute(c, req.actor, d.id)) throw fail(404, 'NOT_FOUND');
     const proposals = await c.query(`SELECT p.version,p.text,p.mediator_id AS "mediatorId",p.created_at AS "createdAt",
       COALESCE((SELECT json_agg(json_build_object('actorId',s.actor_id,'at',s.created_at)) FROM dispatch.remedy_consents s WHERE s.dispute_id=p.dispute_id AND s.version=p.version),'[]') AS consents
       FROM dispatch.remedy_proposals p WHERE p.dispute_id=$1 ORDER BY p.version`, [d.id]);

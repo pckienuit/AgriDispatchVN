@@ -28,6 +28,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+  evidence-init:
+    image: node:26-alpine
+    user: "0:0"
+    command: ["sh", "-c", "chown 1000:1000 /var/lib/agridispatch/evidence && chmod 0700 /var/lib/agridispatch/evidence"]
+    volumes:
+      - evidence_data:/var/lib/agridispatch/evidence
   app:
     build:
       context: ..
@@ -38,11 +44,16 @@ services:
       ACCOUNT_SERVICE_URL: http://account:3001
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Set a random internal service token of at least 32 characters}
       DATABASE_URL: "postgresql://${POSTGRES_USER:-agridispatch}:${POSTGRES_PASSWORD:?Set local POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-agridispatch}"
+      EVIDENCE_LOCAL_DIR: /var/lib/agridispatch/evidence
+    volumes:
+      - evidence_data:/var/lib/agridispatch/evidence
     ports:
       - "127.0.0.1:${APP_PORT:-3000}:3000"
     depends_on:
       db:
         condition: service_healthy
+      evidence-init:
+        condition: service_completed_successfully
   test-db:
     image: postgres:17-alpine
     profiles: [test]
@@ -73,3 +84,4 @@ services:
         condition: service_healthy
 volumes:
   pgdata:
+  evidence_data:

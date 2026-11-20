@@ -98,6 +98,17 @@ export const FEATURES = [
 
   },
   {
+    id: 'field-inspection',
+    area: 'HTX thẩm định thực địa trước ca',
+    routes: ['GET /api/bookings/:id/inspections', 'POST /api/bookings/:id/inspections'],
+    unit: ['server/tests/shifts.test.js'],
+    integration: ['server/tests/integration/field-inspection.test.js', 'server/tests/integration/shifts.test.js'],
+    browser: [
+      { mode: 'operations', flow: 'after farmer readiness, fixture sends HTX inspection through the real API before operator starts work' },
+    ],
+    gaps: { browser: 'Legacy smoke performs the HTX action through the API, not by clicking H-04' },
+  },
+  {
     id: 'acceptance-settlement',
     area: 'Nghiệm thu, đồng ý theo phiên bản, báo thanh toán, xác nhận nhận',
     routes: ['POST /api/bookings/:id/acceptance', 'POST /api/bookings/:id/acceptance/:version/consent', 'GET /api/bookings/:id/acceptance', 'POST /api/bookings/:id/payments', 'GET /api/bookings/:id/payments', 'POST /api/payments/:id/confirm'],
@@ -110,11 +121,11 @@ export const FEATURES = [
   {
     id: 'disputes-remedies',
     area: 'Khiếu nại, phản hồi, hòa giải, đề xuất, đóng chưa giải quyết',
-    routes: ['POST /api/bookings/:id/disputes', 'GET /api/disputes', 'GET /api/disputes/:id', 'POST /api/disputes/:id/responses', 'POST /api/disputes/:id/mediator', 'POST /api/disputes/:id/proposals', 'POST /api/disputes/:id/proposals/:version/consent', 'POST /api/disputes/:id/close-unresolved', 'GET /api/dispute-review', 'GET /api/dispute-review/:id/mediators', 'GET /api/disputes/:id/proposals'],
+    routes: ['POST /api/bookings/:id/disputes', 'GET /api/disputes', 'GET /api/disputes/:id', 'POST /api/disputes/:id/responses', 'GET /api/htx/disputes', 'POST /api/disputes/:id/htx-mediator', 'POST /api/disputes/:id/escalate', 'POST /api/disputes/:id/mediator', 'POST /api/disputes/:id/proposals', 'POST /api/disputes/:id/proposals/:version/consent', 'POST /api/disputes/:id/close-unresolved', 'GET /api/dispute-review', 'GET /api/dispute-review/:id/mediators', 'GET /api/disputes/:id/proposals'],
     unit: ['server/tests/disputes.test.js', 'server/tests/web-disputes.test.js'],
-    integration: ['server/tests/integration/disputes.test.js', 'server/tests/integration/remedies.test.js'],
+    integration: ['server/tests/integration/disputes.test.js', 'server/tests/integration/remedies.test.js', 'server/tests/integration/htx-mediation.test.js'],
     browser: [
-      { mode: 'operations', flow: 'farmer files dispute; farmer responds; admin mediator proposes v1; both parties consent; second dispute closed unresolved and booking stays frozen' },
+      { mode: 'operations', flow: 'party files dispute; respondent replies; admin records escalation before assigning mediator; both parties independently consent to current proposal; second dispute closed unresolved and booking stays frozen' },
     ],
   },
   {

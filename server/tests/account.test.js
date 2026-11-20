@@ -85,6 +85,11 @@ test('registration rejects role fields and invalid shapes before touching the DB
     { ...valid, name: '' },
     { ...valid, name: 'n'.repeat(121) },
     { email: valid.email, password: valid.password },
+    { ...valid, phone: '0912345678' },
+    { phone: '0112345678', password: valid.password, name: valid.name },
+    { phone: '091234567', password: valid.password, name: valid.name },
+    { phone: 912345678, password: valid.password, name: valid.name },
+    { phone: '0912345678x', password: valid.password, name: valid.name },
     [valid],
   ];
   for (const body of bad) {
@@ -98,7 +103,7 @@ test('registration rejects role fields and invalid shapes before touching the DB
 
 test('login rejects extra fields and oversized passwords before DB work', async (t) => {
   const url = await serve(t, { pool: noDb, internalServiceToken: SECRET_FOR_APP });
-  for (const body of [{ email: 'a@example.com', password: 'x', roles: ['admin'] }, { email: 'a@example.com', password: 'x'.repeat(129) }, { email: 'a@example.com' }]) {
+  for (const body of [{ email: 'a@example.com', password: 'x', roles: ['admin'] }, { email: 'a@example.com', password: 'x'.repeat(129) }, { email: 'a@example.com' }, { phone: '0912345678', email: 'a@example.com', password: 'x' }, { phone: '+1 202 555 0100', password: 'x' }, { phone: '0912345678' }]) {
     const response = await post(url, '/api/auth/login', body);
     assert.equal(response.status, 400);
     assert.deepEqual(await response.json(), { error: { code: 'INVALID_REQUEST' } });

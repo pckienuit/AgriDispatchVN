@@ -8,14 +8,15 @@ const OPERATION = 'booking.create';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const INSTANT_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._~-]{16,128}$/;
-const BODY_KEYS = ['fieldId', 'serviceId', 'startAt', 'endAt'];
+const BODY_KEYS = ['fieldId', 'serviceId', 'startAt', 'endAt', 'cropVariety', 'sowDate', 'harvestDate'];
+const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DB_UNAVAILABLE_NODE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'EHOSTUNREACH']);
 const POOL_CONNECT_TIMEOUT_MESSAGE = 'timeout exceeded when trying to connect';
 
 // Every SELECT and RETURNING uses this list, so create and read responses share one shape.
 const BOOKING_COLUMNS = `id, state, field_id, service_id, start_at, end_at, field_name, field_area_m2,
   service_code, service_name, service_data_label, price_per_ha_vnd::text AS price_per_ha_vnd,
-  total_vnd::text AS total_vnd, created_at`;
+  total_vnd::text AS total_vnd, crop_variety, sow_date::text AS sow_date, harvest_date::text AS harvest_date, created_at`;
 
 class ApiError extends Error {
   constructor(status, code, extra = {}) {
@@ -64,11 +65,30 @@ export function validateBookingInput(body) {
   }
   const fieldId = parseUuid(body.fieldId, 'fieldId');
   const serviceId = parseUuid(body.serviceId, 'serviceId');
+  const cropVariety = body.cropVariety === undefined ? null : typeof body.cropVariety === 'string' ? body.cropVariety.trim() : '';
+  if (cropVariety !== null && (!cropVariety || [...cropVariety].length > 80)) throw fail('cropVariety');
+  const parseDate = (value, field) => {
+    if (value === undefined || value === null || value === '') return null;
+    const match = typeof value === 'string' ? DATE_PATTERN.exec(value) : null;
+    if (!match) throw fail(field);
+    const [, year, month, day] = match.map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) throw fail(field);
+    return value;
+  };
+  const sowDate = parseDate(body.sowDate, 'sowDate');
+  const harvestDate = parseDate(body.harvestDate, 'harvestDate');
+  if (sowDate && harvestDate && harvestDate < sowDate) throw fail('harvestDate');
   const start = parseInstant(body.startAt, 'startAt');
   const end = parseInstant(body.endAt, 'endAt');
   const span = end - start;
   if (span <= 0 || span > MAX_SCHEDULE_SPAN_MS) throw fail('endAt');
-  return { fieldId, serviceId, startAt: start.toISOString(), endAt: end.toISOString() };
+  return {
+    fieldId, serviceId, startAt: start.toISOString(), endAt: end.toISOString(),
+    ...(body.cropVariety !== undefined ? { cropVariety } : {}),
+    ...(body.sowDate !== undefined ? { sowDate } : {}),
+    ...(body.harvestDate !== undefined ? { harvestDate } : {}),
+  };
 }
 
 export function parseIdempotencyKey(value) {
@@ -79,8 +99,12 @@ export function parseIdempotencyKey(value) {
 }
 
 // Input is already normalized by validateBookingInput, so equivalent timestamp spellings hash the same.
-export function canonicalPayloadHash({ fieldId, serviceId, startAt, endAt }) {
-  return createHash('sha256').update(JSON.stringify([fieldId, serviceId, startAt, endAt])).digest('hex');
+// Crop facts join the hash only when present, so requests without them keep their stored hash.
+// A retry under the same key with different crop facts therefore conflicts instead of replaying the first booking.
+export function canonicalPayloadHash({ fieldId, serviceId, startAt, endAt, cropVariety = null, sowDate = null, harvestDate = null }) {
+  const parts = [fieldId, serviceId, startAt, endAt];
+  if (cropVariety !== null || sowDate !== null || harvestDate !== null) parts.push(cropVariety, sowDate, harvestDate);
+  return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 }
 
 // ponytail: demo engineering policy, not a legal or market rule. total = round-half-up(rate * m2 / 10000) VND.
@@ -106,6 +130,9 @@ function bookingDto(row) {
     serviceId: row.service_id,
     startAt: row.start_at.toISOString(),
     endAt: row.end_at.toISOString(),
+    cropVariety: row.crop_variety,
+    sowDate: row.sow_date,
+    harvestDate: row.harvest_date,
     field: { name: row.field_name, areaM2: row.field_area_m2 },
     service: {
       code: row.service_code,
@@ -187,11 +214,11 @@ async function createBooking(pool, actor, input, key) {
 
     const inserted = await client.query(
       `INSERT INTO dispatch.bookings (owner_id, field_id, service_id, start_at, end_at, field_name, field_area_m2,
-         service_code, service_name, service_data_label, price_per_ha_vnd, total_vnd)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         service_code, service_name, service_data_label, price_per_ha_vnd, total_vnd, crop_variety, sow_date, harvest_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        RETURNING ${BOOKING_COLUMNS}`,
       [actor.id, input.fieldId, input.serviceId, input.startAt, input.endAt, fieldName, areaM2,
-        code, serviceName, dataLabel, price, total.toString()],
+        code, serviceName, dataLabel, price, total.toString(), input.cropVariety ?? null, input.sowDate ?? null, input.harvestDate ?? null],
     );
     const booking = inserted.rows[0];
     await client.query(

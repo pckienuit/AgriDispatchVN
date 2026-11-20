@@ -1,10 +1,12 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { createCatalogRouter } from './catalog.js';
+import { createFieldDetailsRouter } from './field-details.js';
 import { createAccountAuth } from './service-auth.js';
 import { createBookingRouter } from './booking.js';
 import { createAccountGateway } from './account-gateway.js';
 import { createRecruitmentRouter } from './recruitment.js';
+import { createWorkforceRouter } from './workforce.js';
 import { createDispatchRouter } from './dispatch.js';
 import { createSchedulingRouter } from './scheduling.js';
 import { createShiftRouter } from './shifts.js';
@@ -15,6 +17,9 @@ import { createActivityRouter } from './activity.js';
 import { createRequestContext } from './observability.js';
 import { createPostponementRouter } from './postponement.js';
 import { createEvidenceRouter } from './evidence.js';
+import { createCoopTerritoriesRouter } from './coop-territories.js';
+import { createLocalServiceExtensionsRouter } from './local-service-extensions.js';
+import { createPlatformControlsRouter } from './platform-controls.js';
 const { AbortSignal } = globalThis;
 
 export function createApp({ pool, accountServiceUrl, internalServiceToken, trustedProxyHops = 0, trustedProxyCidrs = null, buildSha = 'development', log, evidenceStore = null }) {
@@ -45,8 +50,10 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken, trust
     const authenticate = createAccountAuth({ accountServiceUrl, internalServiceToken });
     app.use(createAccountGateway({ accountServiceUrl, internalServiceToken, trustedProxyHops, trustedProxyCidrs }));
     app.use(createCatalogRouter({ pool, authenticate }));
+    app.use(createFieldDetailsRouter({ pool, authenticate }));
     app.use(createBookingRouter({ pool, authenticate }));
     app.use(createRecruitmentRouter({ pool, authenticate }));
+    app.use(createWorkforceRouter({ pool, authenticate }));
     app.use(createDispatchRouter({ pool, authenticate }));
     app.use(createSchedulingRouter({ pool, authenticate }));
     app.use(createShiftRouter({ pool, authenticate }));
@@ -56,6 +63,9 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken, trust
     app.use(createActivityRouter({ pool, authenticate }));
     app.use(createPostponementRouter({ pool, authenticate }));
     app.use(createEvidenceRouter({ pool, authenticate, store:evidenceStore }));
+    app.use(createCoopTerritoriesRouter({ pool, authenticate }));
+    app.use(createLocalServiceExtensionsRouter({ pool, authenticate }));
+    app.use(createPlatformControlsRouter({ pool, authenticate }));
   }
   app.use(express.static(fileURLToPath(new URL('../../web/', import.meta.url)), { dotfiles: 'deny' }));
   app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND' } }));

@@ -1,5 +1,6 @@
 import express from 'express';
 import { parsePagination } from './catalog.js';
+import { DISPUTE_PERSONAL_SCOPE_SQL } from './disputes.js';
 
 // G10: in-app activity feed derived from persisted event tables. Not notifications: no delivery, no read state.
 // Visibility is set per source by entity scope. actor_id alone never grants visibility.
@@ -32,6 +33,7 @@ const LABELS = {
   'dispute.DISPUTE_OPENED': 'Tranh chấp đã được mở',
   'dispute.RESPONSE_ADDED': 'Đã có phản hồi trong tranh chấp',
   'dispute.MEDIATOR_ASSIGNED': 'Người hòa giải đã được phân công',
+  'dispute.MEDIATION_ESCALATED': 'Tranh chấp đã được chuyển cấp hòa giải',
   'remedy.PROPOSED': 'Phương án xử lý đã được đề xuất',
   'remedy.CONSENTED': 'Một bên đã đồng ý phương án xử lý',
   'remedy.RESOLVED': 'Tranh chấp đã đóng sau khi hai bên đồng ý',
@@ -65,11 +67,11 @@ SELECT prefix, seq, created_at, type, href FROM (
   UNION ALL
   SELECT 'dispute', e.sequence, e.created_at, 'dispute.' || e.event_type, '#dispute/' || e.dispute_id::text
     FROM dispatch.dispute_events e JOIN dispatch.disputes d ON d.id = e.dispute_id
-   WHERE $1::uuid IN (d.claimant_id, d.respondent_id, d.mediator_id)
+   WHERE ${DISPUTE_PERSONAL_SCOPE_SQL}
   UNION ALL
   SELECT 'remedy', e.sequence, e.created_at, 'remedy.' || e.event_type, '#dispute/' || e.dispute_id::text
     FROM dispatch.remedy_events e JOIN dispatch.disputes d ON d.id = e.dispute_id
-   WHERE $1::uuid IN (d.claimant_id, d.respondent_id, d.mediator_id)
+   WHERE ${DISPUTE_PERSONAL_SCOPE_SQL}
 ) feed
 ORDER BY created_at DESC, prefix ASC, seq DESC
 LIMIT $2 OFFSET $3`;

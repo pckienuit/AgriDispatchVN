@@ -39,8 +39,8 @@ const DEFINITIONS = [
   'Đã thỏa thuận: tổng tiền trong nghiệm thu đã được hai bên đồng ý.',
   'Đã xác nhận: khoản bên nhận đã xác nhận là đã nhận ngoài hệ thống.',
   'Đang chờ bên nhận xác nhận: khoản chủ ruộng đã ghi báo. Khoản này chưa làm giảm số còn lại.',
-  'Còn lại chưa xác nhận: đã thỏa thuận trừ đã xác nhận.',
-  'Có thể ghi báo thêm: đã thỏa thuận trừ đã xác nhận trừ đang chờ bên nhận xác nhận.',
+  'Còn lại chưa xác nhận: tiền đã thỏa thuận trừ cọc và thanh toán đã xác nhận, thấp nhất là 0 đồng.',
+  'Có thể ghi báo thêm: số còn lại trừ các khoản đang chờ xác nhận, thấp nhất là 0 đồng.',
 ];
 
 // ---- routing and pure helpers (no DOM) --------------------------------------
@@ -141,6 +141,7 @@ function validPayment(p) {
 function validSummary(s) {
   return isObject(s)
     && ['agreedVnd', 'confirmedVnd', 'reportedVnd'].every((key) => vndInput(s[key]) !== null)
+    && ['confirmedDepositVnd', 'reportedDepositVnd', 'excessConfirmedVnd'].every((key) => s[key] === undefined || vndInput(s[key]) !== null)
     && ['outstandingVnd', 'availableToReportVnd'].every((key) => signedVnd(s[key]));
 }
 
@@ -394,11 +395,16 @@ export async function renderSettlement({ main, api, session, announce, route, si
     if (summary) {
       const rows = [
         ['Đã thỏa thuận', summary.agreedVnd],
-        ['Đã xác nhận đã nhận', summary.confirmedVnd],
-        ['Đang chờ bên nhận xác nhận', summary.reportedVnd],
+        ['Cọc đã xác nhận', summary.confirmedDepositVnd ?? '0'],
+        ['Cọc chờ xác nhận', summary.reportedDepositVnd ?? '0'],
+        ['Thanh toán thêm đã xác nhận', summary.confirmedVnd],
+        ['Thanh toán thêm chờ xác nhận', summary.reportedVnd],
         ['Còn lại chưa xác nhận', summary.outstandingVnd],
         ['Có thể ghi báo thêm', summary.availableToReportVnd],
       ];
+      if (BigInt(summary.excessConfirmedVnd ?? '0') > 0n) {
+        out.push(el('p', { text: `Đã ghi nhận dư ${moneyText(summary.excessConfirmedVnd)}. Hai bên đối chiếu ngoài hệ thống; ứng dụng không tự hoàn tiền.` }));
+      }
       out.push(
         el('dl', { class: 'facts' }, rows.map(([label, value]) => el('div', {}, [el('dt', { text: label }), el('dd', { text: moneyText(value) })]))),
         el('ul', {}, DEFINITIONS.map((text) => el('li', { text }))),

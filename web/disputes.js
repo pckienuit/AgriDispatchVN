@@ -11,7 +11,8 @@ const MAX_TEXT = 2000;
 const PAGE = 20;
 const REASONS = { AREA_MISMATCH: 'Diện tích không khớp', QUALITY: 'Chất lượng công việc', NO_SHOW: 'Không có mặt', PAYMENT: 'Thanh toán', OTHER: 'Lý do khác' };
 const STATUSES = { OPEN: 'Đang mở', RESOLVED: 'Đã giải quyết', CLOSED_UNRESOLVED: 'Đóng chưa giải quyết', CLOSED: 'Đã đóng' };
-const CASE_EVENTS = { DISPUTE_OPENED: 'Mở khiếu nại', RESPONSE_ADDED: 'Phản hồi', MEDIATOR_ASSIGNED: 'Gán người hòa giải' };
+const LEVELS = { HTX: 'Cấp HTX', ADMIN: 'Cấp quản trị' };
+const CASE_EVENTS = { DISPUTE_OPENED: 'Mở khiếu nại', RESPONSE_ADDED: 'Phản hồi', MEDIATOR_ASSIGNED: 'Gán người hòa giải', MEDIATION_ESCALATED: 'Chuyển cấp hòa giải' };
 const PROPOSAL_EVENTS = { PROPOSED: 'Đề xuất phương án', CONSENTED: 'Đồng ý phương án', RESOLVED: 'Hai bên đồng ý phương án', CLOSED_UNRESOLVED: 'Đóng chưa giải quyết' };
 const FREEZE = {
   OPEN: 'Vụ việc đang mở. Đơn bị chặn ghi nhận tài chính cho đến khi vụ việc được giải quyết.',
@@ -35,6 +36,8 @@ const ERRORS = {
   PARTY_CONFLICT: 'Không thể chọn người này làm người hòa giải vì có liên quan đến vụ việc.',
   RECUSAL_REQUIRED: 'Bạn có liên quan đến vụ việc nên không thể hòa giải hoặc gán người hòa giải.',
   INVALID_MEDIATOR: 'Người được chọn không đủ điều kiện làm người hòa giải.',
+  ESCALATION_REQUIRED: 'Vụ việc đang ở cấp HTX. Cần chuyển cấp lên quản trị trước khi gán người hòa giải.',
+  ALREADY_ESCALATED: 'Vụ việc đã được chuyển lên cấp quản trị. Tải lại để xem trạng thái mới.',
   STALE_VERSION: 'Phương án đã có phiên bản mới. Tải lại để xem phiên bản mới nhất.',
   MEDIATOR_CHANGED: 'Người hòa giải đã thay đổi. Tải lại trước khi đồng ý.',
   STATE_CHANGED: 'Dữ liệu vừa thay đổi do thao tác khác. Tải lại trước khi thử lại.',
@@ -83,6 +86,10 @@ export function closeInput(value) {
   return { error, payload: text === null ? null : { reason: text } };
 }
 
+export function escalateInput(value) {
+  return closeInput(value);
+}
+
 export function disputeInput({ reason, details } = {}) {
   const errors = {};
   if (!Object.hasOwn(REASONS, reason)) errors.reason = 'Chọn lý do khiếu nại.';
@@ -96,12 +103,21 @@ export function statusLabel(status) {
   return Object.hasOwn(STATUSES, status) ? STATUSES[status] : null;
 }
 
+export function levelLabel(level) {
+  return Object.hasOwn(LEVELS, level) ? LEVELS[level] : null;
+}
+
 export function freezeNotice(status) {
   return Object.hasOwn(FREEZE, status) ? FREEZE[status] : null;
 }
 
 const validDispute = (d) => isObject(d) && isUuid(d.id) && isUuid(d.bookingId) && isUuid(d.claimantId) && isUuid(d.respondentId)
-  && Object.hasOwn(REASONS, d.reason) && Object.hasOwn(STATUSES, d.status) && nullable(d.mediatorId, isUuid) && isInstant(d.createdAt);
+  && Object.hasOwn(REASONS, d.reason) && Object.hasOwn(STATUSES, d.status) && nullable(d.mediatorId, isUuid) && isInstant(d.createdAt)
+  && (d.mediationLevel === undefined || Object.hasOwn(LEVELS, d.mediationLevel))
+  && (d.escalatedAt === undefined || nullable(d.escalatedAt, isInstant))
+  && (d.escalatedBy === undefined || nullable(d.escalatedBy, isUuid))
+  && (d.escalationReason === undefined || nullable(d.escalationReason, (v) => typeof v === 'string'))
+  && (d.escalationConflictType === undefined || nullable(d.escalationConflictType, (v) => typeof v === 'string'));
 
 export function readList(data) {
   if (!isObject(data) || !Array.isArray(data.items) || !data.items.every(validDispute)) return null;
@@ -112,9 +128,16 @@ export function readList(data) {
 const validCaseEvent = (e) => isObject(e) && Number.isSafeInteger(e.sequence) && Object.hasOwn(CASE_EVENTS, e.type)
   && isUuid(e.actorId) && isObject(e.data) && isInstant(e.createdAt);
 
+const validEscalation = (e) => isObject(e) && Number.isSafeInteger(e.sequence) && isUuid(e.actorId)
+  && typeof e.reason === 'string' && nullable(e.conflictType, (v) => typeof v === 'string')
+  && nullable(e.previousMediatorId, isUuid) && isInstant(e.createdAt);
+
 export function readDetail(data) {
   if (!isObject(data) || !validDispute(data.dispute) || !Array.isArray(data.events) || !data.events.every(validCaseEvent)) return null;
-  return { dispute: data.dispute, events: data.events };
+  if (data.escalations !== undefined && (!Array.isArray(data.escalations) || !data.escalations.every(validEscalation))) return null;
+  return data.escalations === undefined
+    ? { dispute: data.dispute, events: data.events }
+    : { dispute: data.dispute, events: data.events, escalations: data.escalations };
 }
 
 const validConsent = (c) => isObject(c) && isUuid(c.actorId) && isInstant(c.at);
@@ -135,7 +158,8 @@ export function readProposals(data, disputeId) {
   return { dispute: d, proposals: data.proposals, events: data.events };
 }
 
-const validReview = (r) => isObject(r) && isUuid(r.id) && isUuid(r.bookingId) && Object.hasOwn(REASONS, r.reason) && Object.hasOwn(STATUSES, r.status);
+const validReview = (r) => isObject(r) && isUuid(r.id) && isUuid(r.bookingId) && Object.hasOwn(REASONS, r.reason) && Object.hasOwn(STATUSES, r.status)
+  && (r.mediationLevel === undefined || Object.hasOwn(LEVELS, r.mediationLevel));
 
 export function readReviewList(data) {
   if (!isObject(data) || !Array.isArray(data.items) || !data.items.every(validReview)) return null;
@@ -149,17 +173,20 @@ export function readMediators(data) {
   return { items: data.items };
 }
 
-// Party identity comes from the dispute ids, never from the role label. Mediator needs admin role and the assigned id.
+// Party identity comes from the dispute ids, never from the role label. Admin triage escalates HTX cases before assignment.
 export function disputeActions(actor, dispute) {
   const open = dispute.status === 'OPEN';
   const isAdmin = Array.isArray(actor.roles) && actor.roles.includes('admin');
   const party = actor.id === dispute.claimantId || actor.id === dispute.respondentId;
-  const mediating = open && isAdmin && actor.id === dispute.mediatorId;
+  const adminLevel = dispute.mediationLevel === 'ADMIN';
+  const mediating = open && isAdmin && adminLevel && actor.id === dispute.mediatorId;
+  const triage = open && isAdmin && !party;
   return {
     respond: open && actor.id === dispute.respondentId,
     propose: mediating,
     close: mediating,
-    assign: open && isAdmin && !party,
+    escalate: triage && !adminLevel,
+    assign: triage && adminLevel,
   };
 }
 
@@ -235,12 +262,12 @@ function pager(page, go) {
 
 const caseCards = (items) => el('ul', { class: 'cards' }, items.map((d) => el('li', { class: 'card' }, [
   el('h3', {}, [link(`#dispute/${d.id}`, REASONS[d.reason])]),
-  el('p', { text: `${statusLabel(d.status)}. Mở lúc ${shortTime(d.createdAt)}.` }),
+  el('p', { text: `${statusLabel(d.status)}. ${levelLabel(d.mediationLevel ?? 'HTX')}. Mở lúc ${shortTime(d.createdAt)}.` }),
 ])));
 
 const reviewCards = (items) => el('ul', { class: 'cards' }, items.map((r) => el('li', { class: 'card' }, [
   el('h3', {}, [link(`#dispute/${r.id}`, `Vụ việc: ${REASONS[r.reason]}`)]),
-  el('p', { text: `${statusLabel(r.status)}. Mở chi tiết để xem bạn có được gán làm người hòa giải không.` }),
+  el('p', { text: `${statusLabel(r.status)}. ${levelLabel(r.mediationLevel ?? 'HTX')}. Mở chi tiết để xem và xử lý.` }),
 ])));
 
 // One list panel with its own loading, error and retry, so a failing queue does not hide personal cases.
@@ -456,23 +483,30 @@ export async function renderDisputes({ main, api, session, announce, route, sign
       }
     }
 
-    function draw({ dispute, events }, { dispute:closure, proposals, events: remedyEvents }) {
+    function draw({ dispute, events, escalations = [] }, { dispute:closure, proposals, events: remedyEvents }) {
       const actions = disputeActions(actor, dispute);
       const latest = proposals.reduce((top, p) => (top === null || p.version > top.version ? p : top), null);
       const state = consentState(actor, dispute, latest, latest);
+      const timeline = [
+        ...events.map((e) => ({ sequence: e.sequence, text: `${CASE_EVENTS[e.type]}, ${who(dispute, e.actorId)}, ${shortTime(e.createdAt)}.${eventNote(e)}` })),
+        ...escalations.map((e) => ({ sequence: e.sequence, text: `${CASE_EVENTS.MEDIATION_ESCALATED}, ${who(dispute, e.actorId)}, ${shortTime(e.createdAt)}. ${e.reason}` })),
+      ].sort((a, b) => a.sequence - b.sequence);
       const nodes = [
         el('p', { class: 'back' }, [link('#disputes', 'Danh sách tranh chấp')]),
         el('p', { class: 'alert warning', role: 'status', text: freezeNotice(dispute.status) }),
         el('dl', { class: 'facts' }, [
           fact('Trạng thái', statusLabel(dispute.status)),
+          fact('Cấp hòa giải', levelLabel(dispute.mediationLevel ?? 'HTX')),
           fact('Lý do', REASONS[dispute.reason]),
           fact('Mở lúc', shortTime(dispute.createdAt)),
           fact('Vai trò của bạn', viewerRole(actor, dispute)),
+          ...(dispute.escalatedAt ? [fact('Chuyển cấp lúc', shortTime(dispute.escalatedAt))] : []),
+          ...(dispute.escalationReason ? [fact('Lý do chuyển cấp', dispute.escalationReason)] : []),
         ]),
       ];
       if (closure.closedAt) nodes.push(section('Kết thúc vụ việc', el('p', {text:`Đóng lúc ${shortTime(closure.closedAt)}`}), el('p', {text:closure.closureReason ?? 'Không có lý do được ghi nhận.'})));
-      nodes.push(section('Diễn biến vụ việc', events.length
-        ? el('ol', {}, events.map((e) => el('li', { text: `${CASE_EVENTS[e.type]}, ${who(dispute, e.actorId)}, ${shortTime(e.createdAt)}.${eventNote(e)}` })))
+      nodes.push(section('Diễn biến vụ việc', timeline.length
+        ? el('ol', {}, timeline.map((e) => el('li', { text: e.text })))
         : el('p', { text: 'Chưa có diễn biến.' })));
       if (actions.respond) {
         nodes.push(section('Phản hồi của bạn', el('p', { text: 'Phản hồi được ghi thành mục mới. Không sửa hay xóa phản hồi đã gửi.' }), textForm({
@@ -491,6 +525,15 @@ export async function renderDisputes({ main, api, session, announce, route, sign
       nodes.push(section('Lịch sử phương án', remedyEvents.length
         ? el('ol', {}, remedyEvents.map((e) => el('li', { text: `${PROPOSAL_EVENTS[e.event_type]}${e.version ? ` phiên bản ${e.version}` : ''}, ${who(dispute, e.actor_id)}, ${shortTime(e.created_at)}.${e.details ? ` ${e.details}` : ''}` })))
         : el('p', { text: 'Chưa có sự kiện phương án.' })));
+      if (actions.escalate) {
+        nodes.push(section('Chuyển cấp hòa giải',
+          el('p', { text: 'Vụ việc đang ở cấp HTX. Cần chuyển cấp lên quản trị kèm lý do trước khi gán người hòa giải độc lập.' }),
+          textForm({
+            name: 'escalate', label: 'Lý do chuyển cấp lên quản trị', hint: 'Tối đa 2000 ký tự.', submit: 'Chuyển cấp lên quản trị',
+            validate: escalateInput, path: `/api/disputes/${dispute.id}/escalate`, done: 'Đã chuyển cấp lên quản trị. Đang tải lại.',
+          }),
+        ));
+      }
       if (actions.assign) nodes.push(assignPicker(dispute));
       if (actions.close) {
         nodes.push(section('Đóng chưa giải quyết', el('p', { text: 'Đóng chưa giải quyết không phải thỏa thuận và không tạo công nợ. Nghĩa vụ liên quan vẫn chặn ghi nhận tài chính. Đã đóng thì không mở lại.' }), textForm({

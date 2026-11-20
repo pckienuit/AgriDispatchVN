@@ -27,29 +27,31 @@ export async function withTransaction(pool, fn) {
   }
 }
 
-export async function createUser(client, { email, name, passwordHash }) {
+export async function createUser(client, { email = null, phone = null, name, passwordHash }) {
   const { rows } = await client.query(
-    'INSERT INTO account.users (email, name, password_hash) VALUES ($1, $2, $3) RETURNING id',
-    [email, name, passwordHash],
+    'INSERT INTO account.users (email, phone, name, password_hash) VALUES ($1, $2, $3, $4) RETURNING id',
+    [email, phone, name, passwordHash],
   );
   const id = rows[0].id;
   await client.query("INSERT INTO account.user_roles (user_id, role) VALUES ($1, 'farmer')", [id]);
-  return { id, email, name, roles: ['farmer'] };
+  return { id, email, phone, name, roles: ['farmer'] };
 }
 
-export async function findUserByEmail(db, email) {
+// identifier is { email } or { phone }, already normalized by account-app.js.
+export async function findUserByIdentifier(db, identifier) {
+  const column = identifier.phone !== undefined ? 'phone' : 'email';
   const { rows } = await db.query(
-    `SELECT u.id, u.email, u.name, u.password_hash,
+    `SELECT u.id, u.email, u.phone, u.name, u.password_hash,
             COALESCE(array_agg(r.role ORDER BY r.role) FILTER (WHERE r.role IS NOT NULL), '{}') AS roles
        FROM account.users u
        LEFT JOIN account.user_roles r ON r.user_id = u.id
-      WHERE u.email = $1
+      WHERE u.${column} = $1
       GROUP BY u.id`,
-    [email],
+    [identifier[column]],
   );
   if (!rows[0]) return null;
   const { id, name, password_hash: passwordHash, roles } = rows[0];
-  return { id, email: rows[0].email, name, passwordHash, roles };
+  return { id, email: rows[0].email, phone: rows[0].phone, name, passwordHash, roles };
 }
 
 // Each login prunes a bounded batch of expired session rows, so the table stays near live-session size.
@@ -69,7 +71,7 @@ export async function createSession(client, userId, ttlSeconds) {
 
 export async function findSession(db, token) {
   const { rows } = await db.query(
-    `SELECT u.id, u.email, u.name, s.expires_at,
+    `SELECT u.id, u.email, u.phone, u.name, s.expires_at,
             COALESCE(array_agg(r.role ORDER BY r.role) FILTER (WHERE r.role IS NOT NULL), '{}') AS roles
        FROM account.sessions s
        JOIN account.users u ON u.id = s.user_id
@@ -81,7 +83,7 @@ export async function findSession(db, token) {
   if (!rows[0]) return null;
   const row = rows[0];
   return {
-    user: { id: row.id, email: row.email, name: row.name, roles: row.roles },
+    user: { id: row.id, email: row.email, phone: row.phone, name: row.name, roles: row.roles },
     expiresAt: row.expires_at.toISOString(),
   };
 }

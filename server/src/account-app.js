@@ -15,7 +15,7 @@ import {
   createUser,
   digest,
   findSession,
-  findUserByEmail,
+  findUserByIdentifier,
   hitRateLimit,
   revokeSession,
   withTransaction,
@@ -34,6 +34,8 @@ const THROTTLE_BOUNDS = {
   registerIpMax: [1, 1000],
 };
 const EMAIL = /^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}$/;
+// Vietnamese mobile numbers in national format. Prefixes 03, 05, 07, 08, 09 per current numbering plan.
+const PHONE = /^0[35789][0-9]{8}$/;
 const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const BEARER = /^Bearer ([A-Za-z0-9_-]{43})$/;
 
@@ -90,6 +92,27 @@ function normalizeEmail(value) {
   return email;
 }
 
+// Accepts "0901 234 567", "090.123.4567", "+84 901234567" and stores "0901234567".
+export function normalizePhone(value) {
+  if (typeof value !== 'string' || value.length > 32) throw bad();
+  let phone = value.trim().replace(/[\s.-]/g, '');
+  if (phone.startsWith('+84')) phone = '0' + phone.slice(3);
+  else if (phone.startsWith('84') && phone.length === 11) phone = '0' + phone.slice(2);
+  if (!PHONE.test(phone)) throw bad();
+  return phone;
+}
+
+// Exactly one sign-in identifier: email (existing accounts) or phone (UI decision D4).
+function identifierFrom(body, otherFields) {
+  if (!isPlainObject(body)) throw bad();
+  if (Object.hasOwn(body, 'phone')) {
+    requireExactFields(body, ['phone', ...otherFields]);
+    return { phone: normalizePhone(body.phone) };
+  }
+  requireExactFields(body, ['email', ...otherFields]);
+  return { email: normalizeEmail(body.email) };
+}
+
 function normalizeName(value) {
   if (typeof value !== 'string') throw bad();
   const name = value.trim();
@@ -105,7 +128,7 @@ function passwordWithinBytes(value, minBytes) {
 }
 
 function publicUser(user) {
-  return { id: user.id, email: user.email, name: user.name, roles: user.roles };
+  return { id: user.id, email: user.email ?? null, phone: user.phone ?? null, name: user.name, roles: user.roles };
 }
 
 function sendError(res, error) {
@@ -174,33 +197,33 @@ export function createAccountApp({ pool, buildSha = 'development', log, ...optio
   });
 
   app.post('/api/auth/register', route(async (req, res) => {
-    requireExactFields(req.body, ['email', 'password', 'name']);
-    const email = normalizeEmail(req.body.email);
+    const identifier = identifierFrom(req.body, ['password', 'name']);
     const name = normalizeName(req.body.name);
     const password = passwordWithinBytes(req.body.password, 12);
     if (!(await allowed('register-ip', clientKey(req), throttle.registerIpMax))) throw rateLimited();
     const passwordHash = await hashPassword(password);
     let user;
     try {
-      user = await withTransaction(pool, (client) => createUser(client, { email, name, passwordHash }));
+      user = await withTransaction(pool, (client) => createUser(client, { ...identifier, name, passwordHash }));
     } catch (error) {
-      if (error.code === '23505' && error.constraint === 'users_email_key') throw new HttpError(409, 'CONFLICT');
+      if (error.code === '23505' && ['users_email_key', 'users_phone_key'].includes(error.constraint)) throw new HttpError(409, 'CONFLICT');
       throw error;
     }
     res.status(201).json({ user: publicUser(user) });
   }));
 
   app.post('/api/auth/login', route(async (req, res) => {
-    requireExactFields(req.body, ['email', 'password']);
-    const email = normalizeEmail(req.body.email);
+    const identifier = identifierFrom(req.body, ['password']);
     const password = passwordWithinBytes(req.body.password, 1);
     const clientIp = clientKey(req);
-    const emailClientKey = JSON.stringify([email, clientIp]);
+    // Email keys keep their original bucket format; phone keys are prefixed so the two namespaces cannot collide.
+    const accountKey = identifier.phone !== undefined ? `phone:${identifier.phone}` : identifier.email;
+    const emailClientKey = JSON.stringify([accountKey, clientIp]);
     // Both counters run before any scrypt work, so throttled traffic cannot consume CPU.
     const emailAllowed = await allowed('login-email', emailClientKey, throttle.loginEmailMax);
     const ipAllowed = await allowed('login-ip', clientIp, throttle.loginIpMax);
     if (!emailAllowed || !ipAllowed) throw rateLimited();
-    const user = await findUserByEmail(pool, email);
+    const user = await findUserByIdentifier(pool, identifier);
     const valid = await verifyPassword(password, user ? user.passwordHash : await missingUserHash());
     if (!user || !valid) throw new HttpError(401, 'INVALID_CREDENTIALS');
     await clearRateLimit(pool, 'login-email', emailClientKey);

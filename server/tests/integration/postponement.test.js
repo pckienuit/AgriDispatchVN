@@ -118,8 +118,16 @@ test('postponement consent, history, resource races and privacy on PostgreSQL',a
  await t.test('start serializes against postpone and freezes further schedule writes',async()=>{
   const p=await pkg();await propose(p,3,4);await consent(p);
   await post(`/api/bookings/${p.bookings[0]}/readiness`,{drained:true,mature:true,intakeReady:true},owner);
+  assert.equal((await post(`/api/bookings/${p.bookings[0]}/inspections`,{result:'PASSED'},coop)).status,201);
   const race=await Promise.all([consent(p,provider),post(`/api/packages/${p.id}/shifts/start`,{},operator)]);
-  assert.equal(race[1].status,201);assert.ok([200,409].includes(race[0].status));
+  if(race[1].status===201){
+   error(race[0],409,'SHIFT_ACTIVE');
+  }else{
+   assert.equal(race[0].status,200);
+   error(race[1],409,'INSPECTION_INCOMPLETE');
+   assert.equal((await post(`/api/bookings/${p.bookings[0]}/inspections`,{result:'PASSED'},coop)).status,201);
+   assert.equal((await post(`/api/packages/${p.id}/shifts/start`,{},operator)).status,201);
+  }
   error(await propose(p,5,6),409,'SHIFT_ACTIVE');
   await assert.rejects(pool.query('UPDATE dispatch.packages SET window_start_at=$2,window_end_at=$3 WHERE id=$1',[p.id,at(5),at(6)]),e=>e.code==='23001');
  });

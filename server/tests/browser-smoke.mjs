@@ -189,6 +189,22 @@ try {
     await click('#readiness-submit');
     await wait("document.querySelector('#readiness-feedback').innerText.includes('Đã lưu')");
     await shot('readiness-desktop-confirmed');
+    const coopLogin = await fetch(new URL('/api/auth/login', origin), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'synthetic-coop@example.com', password: fixture.password }),
+    });
+    assert.equal(coopLogin.status, 200);
+    const { token: coopToken } = await coopLogin.json();
+    const inspected = await fetch(new URL(`/api/bookings/${fixture.bookingId}/inspections`, origin), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${coopToken}` },
+      body: JSON.stringify({ result: 'PASSED' }),
+    });
+    assert.equal(inspected.status, 201);
+    const inspectedBody = await inspected.json();
+    assert.equal(inspectedBody.inspection.result, 'PASSED');
+    assert.equal(inspectedBody.inspection.stale, false);
     await click('#logout-button'); await wait("!!document.querySelector('#login-email')");
     await login('operator');
     await route('#shifts',"[...document.querySelectorAll('button')].some(b=>b.textContent==='Bắt đầu ca')");
@@ -317,9 +333,21 @@ try {
     await click('#logout-button');await wait("!!document.querySelector('#login-email')");await login('admin');
     await route('#disputes',"!!document.querySelector('a[href^=\"#dispute/\"]')");
     await shot('dispute-mobile-review-queue');
-    await route(disputeHash,"!!document.querySelector('#dispute-mediator')");
+    await route(disputeHash,"!!document.querySelector('#dispute-escalate')");
+    assert.equal(await evaluate("!!document.querySelector('#dispute-mediator')"),false);
+    assert.ok(await evaluate("document.querySelector('main').innerText.includes('Cấp HTX')"));
+    await wait("document.querySelector('main').innerText.includes('Không tìm thấy vụ việc hoặc bạn không có quyền xem.')");
+    assert.equal(await evaluate("[...document.querySelectorAll('button')].some(b=>b.textContent==='Xem ảnh thu nhỏ' || b.textContent==='Tải ảnh gốc')"),false);
+    await evaluate("document.querySelector('#dispute-escalate').closest('form').requestSubmit()");
+    assert.ok(await evaluate("document.activeElement.id==='dispute-escalate' && document.querySelector('#dispute-escalate').getAttribute('aria-invalid')==='true'"));
+    await fill('#dispute-escalate','Chuyển cấp mô phỏng để quản trị viên độc lập hòa giải');
+    await evaluate("document.querySelector('#dispute-escalate').closest('form').requestSubmit()");
+    await wait("!!document.querySelector('#dispute-mediator') && !document.querySelector('#dispute-escalate') && document.querySelector('main').innerText.includes('Cấp quản trị')");
+    await wait("document.querySelector('main').innerText.includes('Không tìm thấy vụ việc hoặc bạn không có quyền xem.')");
+    assert.equal(await evaluate("[...document.querySelectorAll('button')].some(b=>b.textContent==='Xem ảnh thu nhỏ' || b.textContent==='Tải ảnh gốc')"),false);
     await evaluate("document.querySelector('#dispute-mediator').closest('form').requestSubmit()");
     await wait("!!document.querySelector('#dispute-proposal')");
+    await wait("[...document.querySelectorAll('button')].some(b=>b.textContent==='Xem ảnh thu nhỏ')");
     await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
     await fill('#dispute-proposal','Phương án mô phỏng: hai bên kiểm tra lại chất lượng, không tự thay đổi khoản đã xác nhận');
     await evaluate("document.querySelector('#dispute-proposal').closest('form').requestSubmit()");
@@ -340,7 +368,11 @@ try {
     await wait(`location.hash.startsWith('#dispute/') && location.hash!==${JSON.stringify(disputeHash)} && document.querySelector('main').innerText.includes('Chưa có phương án')`);
     const unresolvedHash=await evaluate('location.hash');
     await click('#logout-button');await wait("!!document.querySelector('#login-email')");await login('admin');
-    await route(unresolvedHash,"!!document.querySelector('#dispute-mediator')");
+    await route(unresolvedHash,"!!document.querySelector('#dispute-escalate')");
+    assert.equal(await evaluate("!!document.querySelector('#dispute-mediator')"),false);
+    await fill('#dispute-escalate','Chuyển cấp mô phỏng vụ thứ hai để đóng chưa giải quyết');
+    await evaluate("document.querySelector('#dispute-escalate').closest('form').requestSubmit()");
+    await wait("!!document.querySelector('#dispute-mediator') && !document.querySelector('#dispute-escalate') && document.querySelector('main').innerText.includes('Cấp quản trị')");
     await evaluate("document.querySelector('#dispute-mediator').closest('form').requestSubmit()");
     await wait("!!document.querySelector('#dispute-close')");
     await fill('#dispute-close','Chưa thống nhất phương án trong kịch bản mô phỏng');

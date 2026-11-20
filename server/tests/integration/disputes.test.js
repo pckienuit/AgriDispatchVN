@@ -61,6 +61,8 @@ const get = (path, actor) => call('GET', path, actor);
 const disputes = (bookingId, actor = FARMER, payload = OPEN_BODY) => post(`/api/bookings/${bookingId}/disputes`, payload, actor);
 const respond = (disputeId, text, actor) => post(`/api/disputes/${disputeId}/responses`, { text }, actor);
 const assign = (disputeId, mediatorId, actor) => post(`/api/disputes/${disputeId}/mediator`, { mediatorId }, actor);
+const escalate = (disputeId, actor = ADMIN_SEPARATE, reason = 'Synthetic escalation') =>
+  post(`/api/disputes/${disputeId}/escalate`, { reason }, actor);
 
 async function count(sql, params) {
   return (await ctx.pool.query(sql, params)).rows[0].n;
@@ -358,12 +360,14 @@ test('response on a closed case is refused and does not append', async () => {
   assert.equal(await count('SELECT count(*)::int AS n FROM dispatch.dispute_events WHERE dispute_id=$1', [closedId]), 1);
 });
 
-test('mediator assignment is admin only and refuses non-admin targets and involved parties', async () => {
+test('mediator assignment is admin only, requires escalation, and refuses non-admin targets and involved parties', async () => {
   const { bookingId } = await claimed();
   const disputeId = (await disputes(bookingId, FARMER)).body.dispute.id;
   for (const actor of [FARMER, PROVIDER, COOP, OPERATOR]) {
     assert.equal((await assign(disputeId, ADMIN_MEDIATOR, actor)).status, 403);
   }
+  assert.equal((await assign(disputeId, ADMIN_MEDIATOR, ADMIN_SEPARATE)).body.error.code, 'ESCALATION_REQUIRED');
+  assert.equal((await escalate(disputeId, ADMIN_SEPARATE)).status, 200);
   assert.equal((await assign(disputeId, OTHER_FARMER, ADMIN_SEPARATE)).body.error.code, 'INVALID_MEDIATOR');
   assert.equal((await assign(disputeId, ADMIN_MEDIATOR, ADMIN_SEPARATE)).status, 200);
   assert.equal((await assign(disputeId, FARMER, ADMIN_SEPARATE)).status, 400);
@@ -374,6 +378,7 @@ test('mediator assignment is admin only and refuses non-admin targets and involv
 test('assigned mediator reads the case but cannot respond; reassignment audits the previous mediator', async () => {
   const { bookingId } = await claimed();
   const disputeId = (await disputes(bookingId, FARMER)).body.dispute.id;
+  assert.equal((await escalate(disputeId, FARMER)).status, 200);
   const first = await assign(disputeId, ADMIN_MEDIATOR, ADMIN_SEPARATE);
   assert.equal(first.status, 200);
   assert.equal(first.body.dispute.mediatorId, ADMIN_MEDIATOR);
@@ -404,6 +409,7 @@ test('involved admin must recuse; a separate admin can assign an uninvolved admi
   assert.equal(recusal.status, 403);
   assert.equal(recusal.body.error.code, 'RECUSAL_REQUIRED');
   assert.equal((await assign(disputeId, ADMIN_INVOLVED, ADMIN_INVOLVED)).status, 403);
+  assert.equal((await escalate(disputeId, ADMIN_SEPARATE)).status, 200);
   assert.equal((await assign(disputeId, ADMIN_INVOLVED, ADMIN_SEPARATE)).body.error.code, 'PARTY_CONFLICT');
   assert.equal((await assign(disputeId, ADMIN_SEPARATE, ADMIN_SEPARATE)).status, 200);
 });
@@ -414,6 +420,7 @@ test('claimant who also holds admin role recuses; cannot be assigned as mediator
   const recusal = await assign(disputeId, ADMIN_SEPARATE, ADMIN_FARMER);
   assert.equal(recusal.status, 403);
   assert.equal(recusal.body.error.code, 'RECUSAL_REQUIRED');
+  assert.equal((await escalate(disputeId, ADMIN_FARMER)).status, 200);
   const res = await assign(disputeId, ADMIN_FARMER, ADMIN_SEPARATE);
   assert.equal(res.status, 409);
   assert.equal(res.body.error.code, 'PARTY_CONFLICT');
@@ -422,6 +429,7 @@ test('claimant who also holds admin role recuses; cannot be assigned as mediator
 test('package operator with admin role cannot be assigned as mediator of that package', async () => {
   const { bookingId } = await claimed({ operator: ADMIN_OPERATOR });
   const disputeId = (await disputes(bookingId, FARMER)).body.dispute.id;
+  assert.equal((await escalate(disputeId, FARMER)).status, 200);
   const res = await assign(disputeId, ADMIN_OPERATOR, ADMIN_SEPARATE);
   assert.equal(res.status, 409);
   assert.equal(res.body.error.code, 'PARTY_CONFLICT');
@@ -448,6 +456,9 @@ test('dispute rows change only mediator while OPEN; deletes and identity edits a
   await assert.rejects(ctx.pool.query('DELETE FROM dispatch.disputes WHERE id=$1', [disputeId]), { code: '23001' });
   await assert.rejects(ctx.pool.query('UPDATE dispatch.dispute_events SET actor_id=$2 WHERE dispute_id=$1', [disputeId, OTHER_FARMER]), { code: '23001' });
   await assert.rejects(ctx.pool.query('DELETE FROM dispatch.dispute_events WHERE dispute_id=$1', [disputeId]), { code: '23001' });
+  // Direct SQL admin assignment before escalation is refused even with an audit event.
+  await assert.rejects(ctx.pool.query('UPDATE dispatch.disputes SET mediator_id=$2 WHERE id=$1', [disputeId, ADMIN_MEDIATOR]), { code: '23001' });
+  assert.equal((await escalate(disputeId, FARMER)).status, 200);
   // A mediator change without its audit event in the same transaction is refused at commit.
   await assert.rejects(ctx.pool.query('UPDATE dispatch.disputes SET mediator_id=$2 WHERE id=$1', [disputeId, ADMIN_MEDIATOR]), { code: '23001' });
   assert.equal((await ctx.pool.query('SELECT mediator_id FROM dispatch.disputes WHERE id=$1', [disputeId])).rows[0].mediator_id, null);
@@ -461,6 +472,7 @@ test('dispute rows change only mediator while OPEN; deletes and identity edits a
     );
     await client.query('COMMIT');
   } finally {
+    await client.query('ROLLBACK').catch(() => {});
     client.release();
   }
   await assert.rejects(ctx.pool.query('UPDATE dispatch.disputes SET mediator_id=NULL WHERE id=$1', [disputeId]), { code: '23001' });
@@ -470,6 +482,7 @@ test('dispute rows change only mediator while OPEN; deletes and identity edits a
 test('mediator reassignment refuses a forged previous mediator and preserves prior state', async () => {
   const { bookingId } = await claimed();
   const disputeId = (await disputes(bookingId, FARMER)).body.dispute.id;
+  assert.equal((await escalate(disputeId, FARMER)).status, 200);
   assert.equal((await assign(disputeId, ADMIN_MEDIATOR, ADMIN_SEPARATE)).status, 200);
   const client = await ctx.pool.connect();
   try {
@@ -491,6 +504,7 @@ test('mediator reassignment refuses a forged previous mediator and preserves pri
 test('deployment audit refuses inconsistent historical mediator events without rewriting history', async () => {
   const { bookingId } = await claimed();
   const disputeId = (await disputes(bookingId, FARMER)).body.dispute.id;
+  assert.equal((await escalate(disputeId, FARMER)).status, 200);
   assert.equal((await assign(disputeId, ADMIN_MEDIATOR, ADMIN_SEPARATE)).status, 200);
   const client = await ctx.pool.connect();
   try {

@@ -115,11 +115,13 @@ export async function renderRecruitment({main,api,session,announce,route,signIn}
       }else{
         const path=route.name==='offers'?'/api/offers':'/api/applications/mine';
         const {data}=await api.request('GET',`${path}?limit=100`,{auth:true});if(!active())return;
+        const authoritativeOffers=route.name==='applications'?(await api.request('GET','/api/offers?limit=100',{auth:true})).data.items:[];
+        const acceptedApplications=new Set(authoritativeOffers.filter(o=>o.status==='ACCEPTED').map(o=>o.applicationId));
         const list=el('ul',{class:'cards'});
         for(const item of data.items){
           const card=el('li',{class:'card'},[el('h2',{},[el('a',{href:`#job/${item.jobId}`,text:item.job.title})]),el('p',{text:recruitmentStatus(item.status)})]);
           if(route.name==='offers'&&item.status==='OFFERED')card.append(el('div',{class:'actions'},[action('Nhận đề nghị',`/api/offers/${item.id}/accept`),action('Từ chối',`/api/offers/${item.id}/decline`)]));
-          if(route.name==='applications'&&item.status!=='WITHDRAWN')card.append(action('Rút ứng tuyển',`/api/applications/${item.id}/withdraw`));
+          if(route.name==='applications'&&item.status!=='WITHDRAWN'&&!acceptedApplications.has(item.id))card.append(action('Rút ứng tuyển',`/api/applications/${item.id}/withdraw`));
           list.append(card);
         }
         content.replaceChildren(data.items.length?list:el('p',{text:route.name==='offers'?'Chưa có đề nghị.':'Bạn chưa ứng tuyển tin nào.'}));

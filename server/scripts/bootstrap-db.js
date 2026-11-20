@@ -12,7 +12,7 @@ import { readConfig } from '../src/config.js';
 export const DEFAULT_ROLES = Object.freeze({ account: 'account_runtime', booking: 'booking_runtime' });
 export const PASSWORD_ENVS = Object.freeze({ account: 'NEW_ACCOUNT_DB_PASSWORD', booking: 'NEW_BOOKING_DB_PASSWORD' });
 
-// Explicit relation lists tied to migrations 001..016. Unit tests enforce parity with the real SQL files.
+// Unit tests enforce parity between these relation lists and the SQL migrations.
 export const ACCOUNT_TABLES = Object.freeze([
   'users',
   'user_roles',
@@ -38,6 +38,8 @@ export const DISPATCH_TABLES = Object.freeze([
   'shifts',
   'shift_events',
   'readiness_events',
+  'field_inspections',
+  'location_consents',
   'acceptances',
   'acceptance_consents',
   'payments',
@@ -51,6 +53,18 @@ export const DISPATCH_TABLES = Object.freeze([
   'postponement_consents',
   'postponement_applications',
   'evidence',
+  'operator_profiles',
+  'operator_certifications',
+  'shift_wage_reports',
+  'shift_wage_acknowledgments',
+  'package_call_confirmations',
+  'deposits',
+  'deposit_events',
+  'platform_parameter_versions',
+  'job_reports',
+  'platform_control_events',
+  'commune_territories',
+  'coop_territory_audit',
 ]);
 
 const ROLE_NAME = /^[a-z][a-z0-9_]{0,62}$/;

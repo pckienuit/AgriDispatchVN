@@ -276,24 +276,38 @@ export function createDispatchRouter({ pool, authenticate }) {
     if (!isUuid(req.params.id)) throw new ApiError(400, 'INVALID_ID');
     const id = req.params.id.toLowerCase();
     const isCoop = req.actor.roles.includes('coop');
-    const { rows } = isCoop
-      ? await pool.query(
-        `SELECT id, status, service_id, locality, window_start_at, window_end_at, created_at
-           FROM dispatch.packages WHERE id = $1 AND coop_id = $2`,
-        [id, req.actor.id],
-      )
-      : await pool.query(
-        `SELECT id, status, service_id, locality, window_start_at, window_end_at, created_at
-           FROM dispatch.packages WHERE id = $1 AND (status = 'OPEN' OR provider_id = $2)`,
-        [id, req.actor.id],
-      );
-    if (!rows[0]) throw new ApiError(404, 'NOT_FOUND');
-    const members = await pool.query(
-      'SELECT booking_id FROM dispatch.package_bookings WHERE package_id = $1 ORDER BY booking_id',
-      [rows[0].id],
-    );
-    const bookingIds = members.rows.map((row) => row.booking_id);
-    res.json({ package: { ...packageDto(rows[0], bookingIds.length), bookingIds } });
+    // Read scope and summary in one snapshot. Never project the raw field JSON or coordinates.
+    const { rows: [row] } = await pool.query(`
+      SELECT p.id, p.status, p.service_id, p.locality, p.window_start_at, p.window_end_at, p.created_at,
+             m.booking_ids, m.narrow_road, m.low_bridge_load, m.boggy_soil, m.boat_dock, m.incomplete
+        FROM dispatch.packages p
+        CROSS JOIN LATERAL (
+          SELECT COALESCE(array_agg(pb.booking_id ORDER BY pb.booking_id), '{}'::uuid[]) AS booking_ids,
+                 count(*) FILTER (WHERE (a->'roadWidthM') = '2.5'::jsonb)::int AS narrow_road,
+                 count(*) FILTER (WHERE (a->'bridgeLoadT') = '4'::jsonb)::int AS low_bridge_load,
+                 count(*) FILTER (WHERE a->>'soil' = 'boggy')::int AS boggy_soil,
+                 count(*) FILTER (WHERE (a->'hasBoatDock') = 'true'::jsonb)::int AS boat_dock,
+                 count(*) FILTER (WHERE (jsonb_typeof(a->'roadWidthM') = 'number'
+                   AND jsonb_typeof(a->'bridgeLoadT') IN ('number', 'null')
+                   AND a->>'soil' IN ('firm', 'soft', 'boggy')
+                   AND jsonb_typeof(a->'hasBoatDock') = 'boolean') IS NOT TRUE)::int AS incomplete
+            FROM dispatch.package_bookings pb
+            JOIN dispatch.bookings b ON b.id = pb.booking_id
+            LEFT JOIN dispatch.fields f ON f.id = b.field_id AND f.owner_id = b.owner_id
+            CROSS JOIN LATERAL (SELECT f.access_details AS a) access
+           WHERE pb.package_id = p.id
+        ) m
+       WHERE p.id = $1 AND CASE WHEN $3::boolean THEN p.coop_id = $2
+                                ELSE p.status = 'OPEN' OR p.provider_id = $2 END`, [id, req.actor.id, isCoop]);
+    if (!row) throw new ApiError(404, 'NOT_FOUND');
+    const bookingIds = row.booking_ids;
+    res.set('Cache-Control', 'no-store').json({ package: {
+      ...packageDto(row, bookingIds.length), bookingIds,
+      accessSummary: {
+        narrowRoad: row.narrow_road, lowBridgeLoad: row.low_bridge_load, boggySoil: row.boggy_soil,
+        boatDock: row.boat_dock, incomplete: row.incomplete,
+      },
+    } });
   }));
 
   // Coop lists its own delegated REQUESTED bookings. Snapshot name/area/service; locality comes from the live field row.

@@ -34,6 +34,8 @@ test('versioned remedies need independent party consent; unresolved closure keep
     await pool.query("UPDATE dispatch.bookings SET state='ASSIGNED' WHERE id=$1",[booking]);
     const dispute=(await pool.query("INSERT INTO dispatch.disputes(booking_id,claimant_id,respondent_id,reason,status) VALUES($1,$2,$3,'QUALITY','OPEN') RETURNING id",[booking,owner,provider])).rows[0].id;
     await pool.query('BEGIN');
+    await pool.query("INSERT INTO dispatch.dispute_events(dispute_id,event_type,actor_id,data) VALUES($1,'MEDIATION_ESCALATED',$2,$3::jsonb)",[dispute,owner,JSON.stringify({reason:'Synthetic escalation',conflictType:null,previousMediatorId:null})]);
+    await pool.query("UPDATE dispatch.disputes SET mediation_level='ADMIN',mediator_id=NULL,escalated_at=clock_timestamp(),escalated_by=$2,escalation_reason='Synthetic escalation' WHERE id=$1",[dispute,owner]);
     await pool.query('UPDATE dispatch.disputes SET mediator_id=$2 WHERE id=$1',[dispute,mediator]);
     await pool.query("INSERT INTO dispatch.dispute_events(dispute_id,event_type,actor_id,data) VALUES($1,'MEDIATOR_ASSIGNED',$2,$3::jsonb)",[dispute,foreign,JSON.stringify({mediatorId:mediator,previousMediatorId:null})]);
     await pool.query('COMMIT');

@@ -1,7 +1,7 @@
 FROM node:26-alpine AS dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --omit=optional && npm cache clean --force
+RUN npm ci --omit=dev && node -e "require('sharp')" && npm cache clean --force
 
 FROM node:26-alpine AS test
 RUN apk add --no-cache git tar python3 py3-yaml
@@ -31,6 +31,7 @@ COPY --chown=node:node package.json package-lock.json ./
 COPY --chown=node:node server ./server
 COPY --chown=node:node db ./db
 COPY --chown=node:node web ./web
+COPY --chown=node:node functions/thumbnail/processor.cjs ./functions/thumbnail/processor.cjs
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"

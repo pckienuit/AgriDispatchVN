@@ -6,6 +6,9 @@ export const MAX_JOB_CAPACITY = 100;
 const TITLE_MAX = 120;
 const LOCALITY_MAX = 200;
 const NOTE_MAX = 500;
+const JOB_SKILLS_MAX = 30;
+const JOB_MACHINE_TYPES = ['harvester', 'tractor', 'drone'];
+const JOB_WAGE_TYPES = ['PER_HA', 'PER_SHIFT', 'NEGOTIABLE'];
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
@@ -63,7 +66,7 @@ function parseInstant(value, field) {
 
 export function validateJobInput(body) {
   assertPlainObject(body);
-  assertKnownKeys(body, ['title', 'locality', 'capacity', 'startAt', 'endAt']);
+  assertKnownKeys(body, ['title', 'locality', 'capacity', 'startAt', 'endAt', 'wageType', 'wageAmountVnd', 'machineType', 'requiredSkills']);
   const title = boundedText(body.title, 'title', TITLE_MAX);
   const locality = boundedText(body.locality, 'locality', LOCALITY_MAX);
   if (!Number.isSafeInteger(body.capacity) || body.capacity < 1 || body.capacity > MAX_JOB_CAPACITY) {
@@ -72,7 +75,16 @@ export function validateJobInput(body) {
   const startAt = parseInstant(body.startAt, 'startAt');
   const endAt = parseInstant(body.endAt, 'endAt');
   if (endAt <= startAt) throw new ApiError(400, 'VALIDATION_FAILED', 'endAt');
-  return { title, locality, capacity: body.capacity, startAt: startAt.toISOString(), endAt: endAt.toISOString() };
+  const wageType = body.wageType ?? null;
+  if (wageType !== null && !JOB_WAGE_TYPES.includes(wageType)) throw new ApiError(400, 'VALIDATION_FAILED', 'wageType');
+  const wageAmountVnd = body.wageAmountVnd ?? null;
+  if (wageAmountVnd !== null && (!Number.isSafeInteger(wageAmountVnd) || wageAmountVnd < 1 || wageAmountVnd > 9007199254740991)) throw new ApiError(400, 'VALIDATION_FAILED', 'wageAmountVnd');
+  if (wageAmountVnd !== null && !['PER_HA', 'PER_SHIFT'].includes(wageType)) throw new ApiError(400, 'VALIDATION_FAILED', 'wageType');
+  const machineType = body.machineType ?? null;
+  if (machineType !== null && !JOB_MACHINE_TYPES.includes(machineType)) throw new ApiError(400, 'VALIDATION_FAILED', 'machineType');
+  const requiredSkills = body.requiredSkills ?? [];
+  if (!Array.isArray(requiredSkills) || requiredSkills.length > JOB_SKILLS_MAX || requiredSkills.some((s) => typeof s !== 'string' || !s.trim() || [...s.trim()].length > 80)) throw new ApiError(400, 'VALIDATION_FAILED', 'requiredSkills');
+  return { title, locality, capacity: body.capacity, startAt: startAt.toISOString(), endAt: endAt.toISOString(), wageType, wageAmountVnd, machineType, requiredSkills: [...new Set(requiredSkills.map((s) => s.trim()))] };
 }
 
 function optionalNote(body) {
@@ -143,6 +155,7 @@ async function lockJob(client, jobId) {
 }
 
 const JOB_COLUMNS = `j.id, j.title, j.locality, j.capacity, j.start_at, j.end_at, j.status, j.closed_at, j.created_at,
+  j.wage_type, j.wage_amount_vnd, j.machine_type, j.required_skills,
   (SELECT count(*) FROM dispatch.applications a WHERE a.job_id = j.id)::int AS application_count,
   (SELECT count(*) FROM dispatch.offers o WHERE o.job_id = j.id AND o.status = 'ACCEPTED')::int AS accepted_count`;
 
@@ -225,9 +238,9 @@ export function createRecruitmentRouter({ pool, authenticate }) {
     const input = validateJobInput(req.body);
     const jobId = await withTx(pool, async (client) => {
       const { rows } = await client.query(
-        `INSERT INTO dispatch.jobs (provider_id, title, locality, capacity, start_at, end_at)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-        [req.actor.id, input.title, input.locality, input.capacity, input.startAt, input.endAt],
+        `INSERT INTO dispatch.jobs (provider_id, title, locality, capacity, start_at, end_at, wage_type, wage_amount_vnd, machine_type, required_skills)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+        [req.actor.id, input.title, input.locality, input.capacity, input.startAt, input.endAt, input.wageType, input.wageAmountVnd, input.machineType, input.requiredSkills],
       );
       await recordEvent(client, { entityType: 'job', entityId: rows[0].id, action: 'job.created', actorId: req.actor.id, toStatus: 'OPEN' });
       return rows[0].id;
@@ -424,6 +437,10 @@ function jobDto(row) {
     createdAt: row.created_at.toISOString(),
     applicationCount: row.application_count,
     acceptedCount: row.accepted_count,
+    wageType: row.wage_type ?? null,
+    wageAmountVnd: row.wage_amount_vnd === null || row.wage_amount_vnd === undefined ? null : String(row.wage_amount_vnd),
+    machineType: row.machine_type ?? null,
+    requiredSkills: row.required_skills ?? [],
   };
 }
 

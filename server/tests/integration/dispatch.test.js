@@ -498,6 +498,7 @@ test('package reads: coop sees own packages, provider sees OPEN only, identities
   assert.deepEqual(ownDetail.body.package.bookingIds, [mine]);
   const providerDetail = await call('GET', `/api/packages/${pkgId}`, 'seam-provider-a');
   assert.equal(providerDetail.status, 200);
+  assert.deepEqual(providerDetail.body.package.accessSummary, { narrowRoad: 0, lowBridgeLoad: 0, boggySoil: 0, boatDock: 0, incomplete: 1 });
   assert.equal(JSON.stringify(providerDetail.body).includes(COOP_A), false);
   assert.equal((await call('GET', `/api/packages/${pkgId}`, 'seam-coop-b')).status, 404);
   assert.equal((await call('GET', `/api/packages/${cancelled}`, 'seam-provider-a')).status, 404);
