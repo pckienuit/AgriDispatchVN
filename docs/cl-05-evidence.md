@@ -148,6 +148,8 @@ Push commit `c6baa74e7e0ed62ae32e5cf01e78f964c22e0cf5` chỉ thay đổi file mi
 
 Kiên đã cấp quyền Azure Pipelines GitHub App trên repo. Pipeline B1 #1 đã chuyển sang kết nối GitHub App `github.com_pckienuit`. Đã kiểm qua API rằng app đọc được YAML từ `demo/cl05-b1`, CI trigger dùng cấu hình YAML, preview có stage `DeployDemoB1` và agent `cl05-docker-local` đang Online.
 
+Push `9a9f1bf81dbbaeea083021fa7fb9321cdcbac781` tự kích hoạt run Azure DevOps #1 lúc 11:44 (UTC+7), reason `batchedCI`. Lượt đầu thiếu `libatomic1` trên container agent khiến Node 26 không khởi động. Sau khi bổ sung thư viện và retry Build trong cùng run, Jenkins chạy test và publish hai image thành công, nhưng bước tạo manifest báo `INVALID_MANIFEST`. Kiểm trực tiếp xác nhận `az acr login` in `Login Succeeded` vào stdout. `Jenkinsfile` chuyển riêng log login sang stderr để stdout của bước lấy digest chỉ chứa digest. [Run #1](https://dev.azure.com/agridispatch-is402-bt05/AgriDispatchVN/_build/results?buildId=1)
+
 **Restart booking một lần ngày 21/11/2026.** Mọi mốc dưới đây theo UTC+7. Lệnh chỉ nhắm Web App `app-booking-bt05a1`.
 
 | Giờ | Kết quả |

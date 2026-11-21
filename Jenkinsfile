@@ -141,7 +141,7 @@ YAML
             actual_acr_id=$(az acr show --subscription "$AZURE_SUBSCRIPTION_ID" --resource-group "$RESOURCE_GROUP" --name "$ACR_NAME" --query id --output tsv)
             test "$(printf '%s' "$actual_acr_id" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$expected_acr_id" | tr '[:upper:]' '[:lower:]')"
             test "$(az acr show --subscription "$AZURE_SUBSCRIPTION_ID" --resource-group "$RESOURCE_GROUP" --name "$ACR_NAME" --query loginServer --output tsv)" = "$ACR_REGISTRY"
-            az acr login --subscription "$AZURE_SUBSCRIPTION_ID" --name "$ACR_NAME" --output none
+            az acr login --subscription "$AZURE_SUBSCRIPTION_ID" --name "$ACR_NAME" --output none >&2
             docker tag "agridispatch-vn:$CI_PROJECT" "$ACR_REGISTRY/agridispatch-vn:$BUILD_SHA"
             push_log=$(docker push "$ACR_REGISTRY/agridispatch-vn:$BUILD_SHA")
             digest=$(echo "$push_log" | grep -Eo 'sha256:[0-9a-f]{64}')
