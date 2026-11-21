@@ -82,13 +82,14 @@ variable "aks_system_vm_size" {
 }
 
 variable "aks_system_node_count" {
-  description = "Initial system node count. Microsoft requires at least 2 system nodes; the stack caps at 3 for quota."
+  description = "System node count. Set 1 explicitly for a Free-tier demo with no node redundancy. Default: 2."
   type        = number
   default     = 2
+  nullable    = false
 
   validation {
-    condition     = contains([2, 3], var.aks_system_node_count)
-    error_message = "aks_system_node_count must be 2 or 3."
+    condition     = contains([1, 2, 3], var.aks_system_node_count)
+    error_message = "aks_system_node_count must be 1, 2 or 3."
   }
 }
 

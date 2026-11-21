@@ -112,11 +112,11 @@ run "reject_b_series_aks_system_pool" {
   ]
 }
 
-run "reject_single_node_aks_system_pool" {
+run "reject_empty_aks_system_pool" {
   command = plan
 
   variables {
-    aks_system_node_count = 1
+    aks_system_node_count = 0
   }
 
   expect_failures = [

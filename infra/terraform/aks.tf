@@ -1,5 +1,5 @@
 # AKS: system pool only (apps and account-service pods share it).
-# Constraints from Microsoft system-pool docs: >= 2 nodes, >= 4 vCPU and 4 GiB per node, no B-series.
+# Free-tier demos may opt in to one system node. At least 4 vCPU and 4 GiB per node; no B-series.
 # Authorized IP ranges restrict the API server; empty list is rejected by the precondition.
 resource "azurerm_kubernetes_cluster" "main" {
   name                = local.aks_name
@@ -68,11 +68,6 @@ resource "azurerm_kubernetes_cluster" "main" {
     precondition {
       condition     = length(var.operator_ip_ranges) > 0
       error_message = "operator_ip_ranges must list at least one CIDR; an empty list leaves the AKS API server open to the internet."
-    }
-
-    precondition {
-      condition     = var.aks_system_node_count >= 2
-      error_message = "AKS system pool requires at least 2 nodes."
     }
   }
 

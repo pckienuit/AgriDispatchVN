@@ -142,7 +142,6 @@ variables {
   operator_ip_ranges     = ["198.51.100.10/32"]
   kubernetes_version     = "1.31"
   aks_system_vm_size     = "Standard_D4s_v3"
-  aks_system_node_count  = 2
   app_service_sku_name   = "S1"
   build_sha              = "14a0e9a71427e1664d24003338578083c47c4322"
   app_image              = "acragribt05a1.azurecr.io/agridispatch-app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -154,6 +153,19 @@ variables {
   internal_service_token = "test-only-internal-service-token-32chars"
   budget_amount_usd      = 43.03
   budget_contact_emails  = ["ops@example.invalid"]
+}
+
+run "demo_plan_accepts_one_system_node" {
+  command = plan
+
+  variables {
+    aks_system_node_count = 1
+  }
+
+  assert {
+    condition     = azurerm_kubernetes_cluster.main.sku_tier == "Free" && azurerm_kubernetes_cluster.main.default_node_pool[0].node_count == 1
+    error_message = "The opt-in demo must plan exactly one node on the AKS Free tier."
+  }
 }
 
 run "valid_plan_enforces_architecture_and_security_contract" {
@@ -195,8 +207,8 @@ run "valid_plan_enforces_architecture_and_security_contract" {
   }
 
   assert {
-    condition     = azurerm_kubernetes_cluster.main.default_node_pool[0].vm_size == "Standard_D4s_v3" && azurerm_kubernetes_cluster.main.default_node_pool[0].node_count >= 2
-    error_message = "AKS system pool must have at least 2 Standard_D4s_v3 nodes."
+    condition     = azurerm_kubernetes_cluster.main.default_node_pool[0].vm_size == "Standard_D4s_v3" && azurerm_kubernetes_cluster.main.default_node_pool[0].node_count == 2
+    error_message = "The default AKS system pool must plan two Standard_D4s_v3 nodes."
   }
 
   assert {

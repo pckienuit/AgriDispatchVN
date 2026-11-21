@@ -18,6 +18,7 @@ operator_ip_ranges = ["198.51.100.10/32"]
 # Pick a Kubernetes version supported by AKS in `location` at deploy time.
 kubernetes_version    = "1.31"
 aks_system_vm_size    = "Standard_D4s_v3"
+# Set to 1 only for a Free-tier demo without node redundancy.
 aks_system_node_count = 2
 app_service_sku_name  = "S1"
 
