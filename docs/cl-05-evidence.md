@@ -144,6 +144,10 @@ Người triển khai xác nhận Kiên đồng ý bằng lời cho lượt tự
 
 Pipeline Azure DevOps `AgriDispatchVN-Demo-B1` dùng pool `agridispatch-jenkins-bridge`, kết nối Jenkins qua HTTPS và triển khai qua Workload Identity Federation. Jenkins xác thực ACR bằng chứng chỉ ngắn hạn. Environment demo có Approval và Exclusive lock. Azure DevOps đã preview được các stage Build và DeployDemoB1 sau khi gán pool mặc định.
 
+Push commit `c6baa74e7e0ed62ae32e5cf01e78f964c22e0cf5` chỉ thay đổi file minh chứng. Azure DevOps chưa ghi nhận CI run cho SHA này. API Source Providers trả 0 webhook. Khi yêu cầu khôi phục CI webhook cho repo, Azure DevOps trả HTTP 500 và nêu quyền quản lý hook của kết nối GitHub OAuth có thể chưa đủ. Chủ repo cần cấp quyền cho Azure Pipelines để nhận push. Bước push tự deploy vẫn đang chờ. [Pipeline Azure DevOps](https://dev.azure.com/agridispatch-is402-bt05/AgriDispatchVN/_build?definitionId=1) · [Cấu hình Azure Pipelines với GitHub](https://learn.microsoft.com/en-us/azure/devops/pipelines/repos/github?view=azure-devops)
+
+Kiên đã cấp quyền Azure Pipelines GitHub App trên repo. Pipeline B1 #1 đã chuyển sang kết nối GitHub App `github.com_pckienuit`. Đã kiểm qua API rằng app đọc được YAML từ `demo/cl05-b1`, CI trigger dùng cấu hình YAML, preview có stage `DeployDemoB1` và agent `cl05-docker-local` đang Online.
+
 **Restart booking một lần ngày 21/11/2026.** Mọi mốc dưới đây theo UTC+7. Lệnh chỉ nhắm Web App `app-booking-bt05a1`.
 
 | Giờ | Kết quả |
