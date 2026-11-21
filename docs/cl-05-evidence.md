@@ -138,6 +138,12 @@ Lần kiểm lại lúc **01:57:46–01:57:47** từ máy làm việc xác nhậ
 
 ### 6. Kiểm một lần push tự deploy và restart
 
+Lượt kiểm trước khi mở deploy ngày 21/11/2026 dùng Jenkins chạy bằng Docker và Azure DevOps agent `cl05-docker-local`. Jenkins đọc đúng commit `efd4104b85e5af195e0eed82f7c52ad0a77a77da` từ GitHub bằng deploy key chỉ đọc. Jenkins build #1 kết thúc `SUCCESS` với `PUBLISH=false`. Lint đạt, unit có 484 bài đạt và 1 bài bỏ qua, integration PostgreSQL Docker đạt 237/237, Function test đạt 21/21. Build tạo manifest local và đã dọn DB test.
+
+Người triển khai xác nhận Kiên đồng ý bằng lời cho lượt tự deploy lên hai Web App B1 hiện có. Tham chiếu trong pipeline là `CL02-KIEN-B1-20261121`. Lần kiểm trước deploy khoảng 10:29 (UTC+7) cho thấy credit hiện tại 99,93 USD, credit ước tính 99,52 USD. Japan East dùng 0/6 vCPU tổng và 0/4 vCPU DSv3. Hai Web App B1 đang chạy tại Japan East.
+
+Pipeline Azure DevOps `AgriDispatchVN-Demo-B1` dùng pool `agridispatch-jenkins-bridge`, kết nối Jenkins qua HTTPS và triển khai qua Workload Identity Federation. Jenkins xác thực ACR bằng chứng chỉ ngắn hạn. Environment demo có Approval và Exclusive lock. Azure DevOps đã preview được các stage Build và DeployDemoB1 sau khi gán pool mặc định.
+
 **Restart booking một lần ngày 21/11/2026.** Mọi mốc dưới đây theo UTC+7. Lệnh chỉ nhắm Web App `app-booking-bt05a1`.
 
 | Giờ | Kết quả |
