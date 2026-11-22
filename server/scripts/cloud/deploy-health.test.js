@@ -19,10 +19,14 @@ const aksArgs = {
 };
 
 test('AKS dry-run plan orders namespace, migration before account rollout and never mutates', () => {
-  const steps = buildAksPlan(aksArgs).steps.map((s) => s.label);
+  const plan = buildAksPlan(aksArgs);
+  const steps = plan.steps.map((s) => s.label);
   assert.deepEqual(steps, ['account-context', 'aks-credentials', 'apply-namespace', 'apply-migration-identity-and-provider', 'apply-migration-job', 'wait-migration-job', 'apply-account', 'rollout-account']);
-  const argvs = buildAksPlan(aksArgs).steps.map((s) => s.argv).flat();
+  const argvs = plan.steps.map((s) => s.argv).flat();
   assert.ok(argvs.includes('--context') && argvs.includes('agri-aks'));
+  for (const { manifest } of plan.steps.filter((step) => step.manifest)) {
+    assert.equal(manifest.apiVersion, 'v1');
+  }
 });
 
 test('AKS rejects wrong resource group, wrong subscription and bad cluster ID', () => {
@@ -31,6 +35,17 @@ test('AKS rejects wrong resource group, wrong subscription and bad cluster ID', 
   assert.throws(() => validateDeployArgs({ ...aksArgs, clusterResourceId: 'my-cluster' }), (e) => e.code === 'INVALID_CLUSTER_ID');
   assert.throws(() => validateDeployArgs({ ...aksArgs, readyTimeout: '5' }), (e) => e.code === 'INVALID_TIMEOUT');
   assert.throws(() => validateDeployArgs({ ...aksArgs, context: 'ctx; rm -rf /' }), (e) => e.code === 'INVALID_CONTEXT');
+});
+
+test('AKS accepts only the named demo cluster when its resource group is explicitly selected', () => {
+  const resourceGroup = 'rg-is402-agri';
+  const demo = CLUSTER.replace('rg-agridispatch-bt05', resourceGroup).replace('agri-aks', 'aks-agri-bt05a1');
+  const plan = buildAksPlan({ ...aksArgs, resourceGroup, clusterResourceId: demo });
+  assert.equal(plan.target.clusterName, 'aks-agri-bt05a1');
+  const service = plan.steps.find((step) => step.label === 'apply-account').manifest.items.find((item) => item.kind === 'Service');
+  assert.equal(service.metadata.annotations['service.beta.kubernetes.io/azure-load-balancer-ipv4'], '10.42.2.240');
+  assert.throws(() => validateDeployArgs({ ...aksArgs, clusterResourceId: demo }), (e) => e.code === 'RESOURCE_GROUP_MISMATCH');
+  assert.throws(() => validateDeployArgs({ ...aksArgs, resourceGroup, clusterResourceId: demo.replace('aks-agri-bt05a1', 'another-cluster') }), (e) => e.code === 'RESOURCE_GROUP_MISMATCH');
 });
 
 test('AKS rejects non-digest image and tag-looking sha before any command', () => {

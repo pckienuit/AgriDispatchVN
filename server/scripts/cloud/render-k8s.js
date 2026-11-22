@@ -3,6 +3,7 @@
 // Stdlib only. Output is printed to stdout; nothing is applied from here.
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
+import { isIPv4 } from 'node:net';
 import { IMAGE_PATTERN, SHA_PATTERN, UUID_PATTERN, coded, parseFlags } from './lib.js';
 
 export const NAMESPACE = 'agridispatch';
@@ -97,6 +98,8 @@ function networkPolicy(name, selector, ingress) {
 
 export function renderAccount(input) {
   const v = validateInputs(input);
+  const accountIp = input.accountIp ?? ACCOUNT_IP;
+  if (!isIPv4(accountIp)) throw coded('INVALID_ACCOUNT_IP', 'account load balancer address must be an IPv4 address');
   const spName = 'agridispatch-account-kv';
   const account = {
     apiVersion: 'apps/v1',
@@ -147,7 +150,7 @@ export function renderAccount(input) {
       annotations: {
         'service.beta.kubernetes.io/azure-load-balancer-internal': 'true',
         'service.beta.kubernetes.io/azure-load-balancer-internal-subnet': v.subnet,
-        'service.beta.kubernetes.io/azure-load-balancer-ipv4': ACCOUNT_IP,
+        'service.beta.kubernetes.io/azure-load-balancer-ipv4': accountIp,
       },
     },
     spec: { type: 'LoadBalancer', selector: APP_LABEL, ports: [{ name: 'http', port: ACCOUNT_PORT, targetPort: 'http', protocol: 'TCP' }] },

@@ -14,6 +14,9 @@ import {
 const CLUSTER_ID = /^\/subscriptions\/([0-9a-f-]{36})\/resourceGroups\/([A-Za-z0-9._()-]{1,90})\/providers\/Microsoft\.ContainerService\/managedClusters\/([A-Za-z0-9_-]{1,63})$/i;
 const CONTEXT = /^[A-Za-z0-9_.@:/-]{1,128}$/;
 const NAMESPACE = 'agridispatch';
+const DEMO_RESOURCE_GROUP = 'rg-is402-agri';
+const DEMO_CLUSTER = 'aks-agri-bt05a1';
+const DEMO_ACCOUNT_IP = '10.42.2.240';
 
 const FLAGS = {
   '--subscription': { key: 'subscription' },
@@ -40,7 +43,9 @@ export function validateDeployArgs(args) {
   const cluster = CLUSTER_ID.exec(args.clusterResourceId);
   if (!cluster) throw coded('INVALID_CLUSTER_ID', '--cluster-resource-id must be an AKS managedClusters resource ID');
   if (cluster[1].toLowerCase() !== args.subscription.toLowerCase()) throw coded('SUBSCRIPTION_MISMATCH', 'cluster subscription differs from --subscription');
-  if ((args.resourceGroup ?? RESOURCE_GROUP) !== RESOURCE_GROUP || cluster[2] !== RESOURCE_GROUP) throw coded('RESOURCE_GROUP_MISMATCH', `resource group must be ${RESOURCE_GROUP}`);
+  const resourceGroup = args.resourceGroup ?? RESOURCE_GROUP;
+  const approvedGroup = resourceGroup === RESOURCE_GROUP || (resourceGroup === DEMO_RESOURCE_GROUP && cluster[3] === DEMO_CLUSTER);
+  if (!approvedGroup || cluster[2] !== resourceGroup) throw coded('RESOURCE_GROUP_MISMATCH', 'cluster must match an approved AKS resource group');
   if (!CONTEXT.test(args.context)) throw coded('INVALID_CONTEXT', '--context has invalid characters');
   const timeout = Number(args.readyTimeout ?? 300);
   if (!Number.isInteger(timeout) || timeout < 30 || timeout > 900) throw coded('INVALID_TIMEOUT', '--ready-timeout must be 30 to 900 seconds');
@@ -53,7 +58,7 @@ export function buildPlan(args, { kubeconfig = '<kubeconfig>' } = {}) {
   if (kubeconfig !== '<kubeconfig>' && (!isAbsolute(kubeconfig) || kubeconfig.endsWith('/.kube/config') || resolve(kubeconfig).startsWith(repo + '/'))) throw coded('INVALID_KUBECONFIG', 'kubeconfig must be a dedicated absolute path outside the repository');
   const target = validateDeployArgs(args);
   const common = { image: args.image, buildSha: args.buildSha, clientId: args.clientId, migrationClientId: args.migrationClientId, tenantId: args.tenantId, keyVaultName: args.keyVaultName, subnetName: args.subnetName ?? 'snet-aks' };
-  const account = renderAccount(common);
+  const account = renderAccount({ ...common, accountIp: target.resourceGroup === DEMO_RESOURCE_GROUP ? DEMO_ACCOUNT_IP : undefined });
   const migration = renderMigrationJob(common);
   const namespace = account.filter((item) => item.kind === 'Namespace');
   const accountRest = account.filter((item) => item.kind !== 'Namespace');
@@ -64,11 +69,11 @@ export function buildPlan(args, { kubeconfig = '<kubeconfig>' } = {}) {
     steps: [
       { label: 'account-context', argv: ['az', 'account', 'show', '--subscription', target.subscription, '-o', 'json'] },
       { label: 'aks-credentials', argv: ['az', 'aks', 'get-credentials', '--subscription', target.subscription, '--resource-group', target.resourceGroup, '--name', target.clusterName, '--context', target.context, '--file', kubeconfig, '--overwrite-existing'] },
-      { label: 'apply-namespace', argv: kubectl('apply', '-f', '<namespace.json>'), manifest: { kind: 'List', items: namespace } },
-      { label: 'apply-migration-identity-and-provider', argv: kubectl('apply', '-f', '<migration.json>'), manifest: { kind: 'List', items: migration.filter((item) => item.kind !== 'Job') } },
-      { label: 'apply-migration-job', argv: kubectl('apply', '-f', '<migration-job.json>'), manifest: { kind: 'List', items: migration.filter((item) => item.kind === 'Job') } },
+      { label: 'apply-namespace', argv: kubectl('apply', '-f', '<namespace.json>'), manifest: { apiVersion: 'v1', kind: 'List', items: namespace } },
+      { label: 'apply-migration-identity-and-provider', argv: kubectl('apply', '-f', '<migration.json>'), manifest: { apiVersion: 'v1', kind: 'List', items: migration.filter((item) => item.kind !== 'Job') } },
+      { label: 'apply-migration-job', argv: kubectl('apply', '-f', '<migration-job.json>'), manifest: { apiVersion: 'v1', kind: 'List', items: migration.filter((item) => item.kind === 'Job') } },
       { label: 'wait-migration-job', argv: kubectl('-n', NAMESPACE, 'get', 'job', jobName, '-o', 'json'), poll: { kind: 'job', name: jobName, timeout: target.timeout } },
-      { label: 'apply-account', argv: kubectl('apply', '-f', '<account.json>'), manifest: { kind: 'List', items: accountRest } },
+      { label: 'apply-account', argv: kubectl('apply', '-f', '<account.json>'), manifest: { apiVersion: 'v1', kind: 'List', items: accountRest } },
       { label: 'rollout-account', argv: kubectl('-n', NAMESPACE, 'rollout', 'status', 'deployment/account', `--timeout=${target.timeout}s`) },
     ],
   };
