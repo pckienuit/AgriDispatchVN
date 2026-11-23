@@ -19,6 +19,8 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   const db = await createDisposableDatabase(process.env.TEST_DATABASE_URL);
   const pool = createPool(db.url);
   const servers = [];
+  const logs = [];
+  const buildSha = 'abcdef1234567890';
   t.after(async () => {
     for (const server of servers) {
       if (server.listening) await new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); });
@@ -37,7 +39,7 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
     await once(server, 'listening');
     return { server, url: `http://127.0.0.1:${server.address().port}` };
   };
-  const account = await listen(createAccountApp({ pool, internalServiceToken: secret }));
+  const account = await listen(createAccountApp({ pool, internalServiceToken: secret, buildSha, log: entry => logs.push(entry) }));
   const objects=new Map();
   let failStorage=false;
   let holdUpload=null;
@@ -61,7 +63,7 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   });
   const blob=await listen(blobApp);
   const evidenceStore=createBlobStore({accountUrl:blob.url,allowLoopback:true,getToken:async()=>'synthetic-storage-test-token'});
-  const booking = await listen(createApp({ pool, accountServiceUrl: account.url, internalServiceToken: secret, evidenceStore }));
+  const booking = await listen(createApp({ pool, accountServiceUrl: account.url, internalServiceToken: secret, evidenceStore, buildSha, log: entry => logs.push(entry) }));
   const post = (url, path, body, token) => fetch(url + path, {
     method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(body),
@@ -77,11 +79,23 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   assert.equal(fieldResponse.status, 201);
   const { field } = await fieldResponse.json();
   const request = { fieldId: field.id, serviceId: '00000000-0000-4000-8000-000000000102', startAt: '2026-11-25T08:00:00Z', endAt: '2026-11-25T12:00:00Z' };
-  const createOrder = (token = session.token) => fetch(booking.url + '/api/bookings', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'Idempotency-Key': 'live-http-booking-key-0001' }, body: JSON.stringify(request),
+  const createOrder = (token = session.token, { requestId, idempotencyKey = 'live-http-booking-key-0001' } = {}) => fetch(booking.url + '/api/bookings', {
+    method: 'POST', headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      'Idempotency-Key': idempotencyKey,
+      ...(requestId ? { 'X-Request-ID': requestId } : {}),
+    }, body: JSON.stringify(request),
   });
-  const order = await createOrder();
+  const bookingTraceId = 'cl08-booking-0001';
+  const order = await createOrder(session.token, { requestId: bookingTraceId });
   assert.equal(order.status, 201);
+  assert.equal(order.headers.get('x-request-id'), bookingTraceId);
+  const bookingTraceLogs = logs.filter(entry => entry.requestId === bookingTraceId);
+  assert.deepEqual(bookingTraceLogs.map(entry => entry.service).sort(), ['account-service', 'booking-service']);
+  assert.ok(bookingTraceLogs.every(entry => entry.buildSha === buildSha));
+  assert.equal(bookingTraceLogs.find(entry => entry.service === 'account-service').status, 200);
+  assert.equal(bookingTraceLogs.find(entry => entry.service === 'booking-service').status, 201);
   const original = await order.json();
   assert.deepEqual(await (await createOrder()).json(), original);
   assert.equal(original.booking.totalVnd, '1440000');
@@ -351,7 +365,16 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
   assert.equal((await pool.query('SELECT count(*)::int n FROM dispatch.allocations WHERE package_id=$1 AND released_at IS NULL', [packageId])).rows[0].n, 2);
   assert.equal((await post(booking.url, '/api/packages', { bookingIds: [original.booking.id] }, session.token)).status, 403);
   await new Promise((resolve) => { account.server.close(resolve); account.server.closeAllConnections(); });
-  const failed = await post(booking.url, '/api/fields', { name: 'Không lưu', locality: 'Demo', areaM2: 1000 }, session.token);
-  assert.equal(failed.status, 503);
+  const bookingsBeforeOutageAttempt = Number((await pool.query('SELECT count(*)::integer AS n FROM dispatch.bookings')).rows[0].n);
+  const failedBooking = await createOrder(session.token, {
+    requestId: 'cl08-outage-booking-001',
+    idempotencyKey: 'cl08-outage-booking-key-001',
+  });
+  assert.equal(failedBooking.status, 503);
+  assert.deepEqual(await failedBooking.json(), { error: { code: 'IDENTITY_UNAVAILABLE' } });
+  const bookingsAfterOutageAttempt = Number((await pool.query('SELECT count(*)::integer AS n FROM dispatch.bookings')).rows[0].n);
+  assert.equal(bookingsAfterOutageAttempt, bookingsBeforeOutageAttempt);
+  const failedField = await post(booking.url, '/api/fields', { name: 'Không lưu', locality: 'Demo', areaM2: 1000 }, session.token);
+  assert.equal(failedField.status, 503);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM dispatch.fields')).rows[0].n, 1);
 });

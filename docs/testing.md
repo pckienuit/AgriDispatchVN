@@ -111,7 +111,7 @@ Nguồn sự thật có kiểm tra tự động nằm tại [server/tests/system
 | `synthetic-data` | Sinh dữ liệu tổng hợp, benchmark nạp | `generate-data.test.js` | `integration/generate-data.test.js` | Trống | Công cụ CLI, không thuộc luồng vai trò trình duyệt |
 | `release-export` | Xuất gói nguồn release có manifest | `export-release.test.js` | Trống | Trống | CLI chạy trên git tree; đã kiểm unit với `git`/`tar` thật |
 | `function-thumbnail` | Azure Function xử lý thumbnail | `function-config.test.js` (+ `functions/thumbnail/*.test.cjs` trong `npm test`) | Trống | Trống | Chưa chạy Blob trigger host runtime |
-| `benchmark-http` | Đo HTTP và benchmark đặt lịch | `benchmark-http.test.js` | `integration/benchmark-bookings.test.js` | Trống | Đo lường benchmark, không có khẳng định capacity |
+| `benchmark-http` | Đo HTTP, benchmark đặt lịch, tuyển thợ và bộ chạy loạt CL-12 | `benchmark-http.test.js`, `benchmark-suite.test.js` | `integration/benchmark-bookings.test.js`, `integration/benchmark-recruitment.test.js` | Trống | Đo lường benchmark, không có khẳng định capacity |
 
 ## Ghi nhận kiểm tra trực quan (lần chạy `65cb9897dc5a`)
 

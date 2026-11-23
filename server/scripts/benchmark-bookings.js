@@ -37,7 +37,7 @@ export class OptionError extends RangeError {
   }
 }
 
-function parseLocalRoot(value) {
+export function parseLocalRoot(value) {
   const invalid = () => new OptionError('INVALID_ROOT', 'TEST_DATABASE_URL phải là PostgreSQL loopback tới DB *_test chuyên dụng');
   if (typeof value !== 'string' || value === '') throw invalid();
   let root;
@@ -84,7 +84,7 @@ export function judgeBookingRun({ count, rows, invariants }) {
   return Object.entries(expectedInvariants(count)).every(([key, value]) => invariants[key] === value);
 }
 
-const parseJson = (text) => {
+export const parseJson = (text) => {
   try {
     return JSON.parse(text);
   } catch {
@@ -161,13 +161,13 @@ export async function requestBookingHttp(deadline, { method, url, headers = {}, 
   }
 }
 
-async function listen(app) {
+export async function listen(app) {
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   return server;
 }
 
-const originOf = (server) => `http://127.0.0.1:${server.address().port}`;
+export const originOf = (server) => `http://127.0.0.1:${server.address().port}`;
 
 function summarizeWrites(rows, count) {
   const errors = {};
@@ -199,7 +199,7 @@ function summarizeWrites(rows, count) {
   };
 }
 
-async function closeAll(state) {
+export async function closeAll(state) {
   const cleanup = {
     childDatabase: state.child?.name ?? null,
     serversClosed: 0,
@@ -414,7 +414,7 @@ export async function runBookingBenchmark(input = {}) {
   };
 }
 
-function isInsideRepo(file) {
+export function isInsideRepo(file) {
   const rel = path.relative(REPO_ROOT, file);
   return rel === '' || (rel.split(path.sep)[0] !== '..' && !path.isAbsolute(rel));
 }
