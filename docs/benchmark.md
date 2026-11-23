@@ -2,7 +2,7 @@
 
 Công cụ `server/scripts/benchmark-http.js` đo tải đọc có giới hạn trên ba đường cố định: `/health`, `/api/services?limit=20`, `/api/jobs?limit=20`. Không hỗ trợ đường dẫn tùy ý, method khác GET, header xác thực hay ghi dữ liệu. Mỗi request đọc đầy đủ body, tối đa 256 KiB.
 
-Kết quả đo CL-12 nằm ở [benchmark-cl12.md](benchmark-cl12.md).
+Kết quả đo CL-12 nằm ở [benchmark-cl12.md](benchmark-cl12.md), cách chạy ở [benchmark-cl12-run.md](benchmark-cl12-run.md).
 
 Công cụ chỉ chứa mã đo. Repo không chứa file số liệu gốc. Số liệu chỉ được ghi sau khi có lần chạy thật theo giao thức bên dưới.
 

@@ -42,6 +42,34 @@ test('read runs with any request error are invalid; recruitment validity is sepa
   assert.deepEqual([failed.valid, failed.errorCode, failed.violationCount], [false, 'SETUP_FAILED', null]);
 });
 
+test('read requests cut when the measure window closes do not fail the run; real timeouts still do', () => {
+  const config = { warmupMs: 1000, durationMs: 5000, timeoutMs: 2000, concurrency: 4 };
+  const ok = (offsetMs) => ({ phase: 'measure', offsetMs, durationMs: 100, status: 200, error: null });
+  const cut = (offsetMs, durationMs) => ({ phase: 'measure', offsetMs, durationMs, status: null, error: 'TIMEOUT' });
+  const agg = (timeouts, extra = {}) => ({ attempted: 6 + timeouts, completed: 6, http4xx: 0, http5xx: 0, redirectRefused: 0, timeouts, network: 0, bodyLimit: 0, p50Ms: 100, p95Ms: 190, throughputRps: 30, ...extra });
+  const base = [ok(1000), ok(1100), ok(1200), ok(1300), ok(1400), ok(1500)];
+
+  const edge = { config, aggregates: agg(4), rows: [...base, cut(5905, 100), cut(5950, 52), cut(5990, 10), cut(5920, 79)] };
+  assert.deepEqual([normalizeRun('read', edge).valid, normalizeRun('read', edge).cutAtWindowEnd], [true, 4]);
+
+  const fullTimeout = { config, aggregates: agg(1), rows: [...base, cut(2000, 2000)] };
+  assert.deepEqual([normalizeRun('read', fullTimeout).valid, normalizeRun('read', fullTimeout).errorCode], [false, 'REQUEST_ERRORS']);
+
+  const early = { config, aggregates: agg(1), rows: [...base, cut(3000, 150)] };
+  assert.equal(normalizeRun('read', early).valid, false);
+
+  // A worker whose request ends 1 ms before the edge may start one more that is cut at once: still a window cutoff.
+  const fifth = { config, aggregates: agg(5), rows: [...base, ...[0, 1, 2, 3].map((i) => cut(5900 + i, 100)), cut(5999, 1)] };
+  assert.deepEqual([normalizeRun('read', fifth).valid, normalizeRun('read', fifth).cutAtWindowEnd], [true, 5]);
+
+  // Started with the full timeout available (3500 + 2000 < 6000) and ended at the edge by coincidence: real timeout.
+  const fullBudget = { config, aggregates: agg(1), rows: [...base, cut(3500, 2499)] };
+  assert.equal(normalizeRun('read', fullBudget).valid, false);
+
+  const edgePlus5xx = { config, aggregates: agg(1, { http5xx: 1 }), rows: [...base, cut(5950, 50)] };
+  assert.equal(normalizeRun('read', edgePlus5xx).valid, false);
+});
+
 test('a case short of valid runs is marked thiếu and the table never shows it as reached', () => {
   const line = (over) => ({ warmup: false, valid: true, errorCode: null, requests: 40, p50Ms: 3, p95Ms: 8, throughputRps: null, violationCount: 0, ...over });
   const lines = [line({ warmup: true }), ...Array.from({ length: 29 }, () => line()), line({ valid: false, errorCode: 'RUN_FAILED', violationCount: null })];

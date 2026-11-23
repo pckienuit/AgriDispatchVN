@@ -33,15 +33,31 @@ const max = (values) => {
   return nums.length ? Math.max(...nums) : null;
 };
 
+// Within this many ms of the window end, an aborted request is treated as cut by the window, not as a slow response.
+const WINDOW_EDGE_MS = 5;
+
+// benchmark-http gives each request min(timeoutMs, time left in the window) and records the abort as TIMEOUT (kept in raw
+// rows). A request whose own deadline was shortened by the window and that ended at the window edge was cut by the window,
+// not slow: the suite counts it separately. Any TIMEOUT that had its full timeoutMs available still fails the run.
+export function countWindowCutoffs(report) {
+  const config = report.config;
+  if (!config || !Array.isArray(report.rows)) return 0;
+  const windowEnd = config.warmupMs + config.durationMs;
+  return report.rows.filter((row) => row.phase === 'measure' && row.error === 'TIMEOUT'
+    && row.offsetMs + config.timeoutMs > windowEnd
+    && row.offsetMs + row.durationMs >= windowEnd - WINDOW_EDGE_MS).length;
+}
+
 // One normalized line per run. Decides validity; never turns a failed run into a pass.
 export function normalizeRun(caseName, report) {
   if (caseName === 'read') {
     const a = report.aggregates;
-    const failures = a.http4xx + a.http5xx + a.redirectRefused + a.timeouts + a.network + a.bodyLimit;
+    const cutAtWindowEnd = countWindowCutoffs(report);
+    const failures = a.http4xx + a.http5xx + a.redirectRefused + (a.timeouts - cutAtWindowEnd) + a.network + a.bodyLimit;
     return {
       valid: a.completed > 0 && failures === 0,
       errorCode: a.completed === 0 ? 'NO_COMPLETED' : failures ? 'REQUEST_ERRORS' : null,
-      requests: a.attempted, p50Ms: a.p50Ms, p95Ms: a.p95Ms, throughputRps: a.throughputRps, violationCount: null,
+      requests: a.attempted, p50Ms: a.p50Ms, p95Ms: a.p95Ms, throughputRps: a.throughputRps, violationCount: null, cutAtWindowEnd,
     };
   }
   if (caseName === 'booking') {
@@ -79,6 +95,7 @@ export function summarizeCase(caseName, target, lines) {
     invalidRuns: measured.length - valid.length,
     invalidByCode: errorCodes,
     requestsInValidRuns: valid.reduce((sum, line) => sum + line.requests, 0),
+    cutAtWindowEndInValidRuns: valid.reduce((sum, line) => sum + (line.cutAtWindowEnd ?? 0), 0),
     medianP50Ms: median(valid.map((line) => line.p50Ms)),
     medianP95Ms: median(valid.map((line) => line.p95Ms)),
     maxP95Ms: max(valid.map((line) => line.p95Ms)),
@@ -88,7 +105,7 @@ export function summarizeCase(caseName, target, lines) {
   };
 }
 
-const CSV_COLUMNS = ['case', 'run', 'warmup', 'valid', 'errorCode', 'requests', 'p50Ms', 'p95Ms', 'throughputRps', 'violationCount', 'startedAt', 'file'];
+const CSV_COLUMNS = ['case', 'run', 'warmup', 'valid', 'errorCode', 'requests', 'cutAtWindowEnd', 'p50Ms', 'p95Ms', 'throughputRps', 'violationCount', 'startedAt', 'file'];
 const csvCell = (value) => {
   const text = value === null || value === undefined ? '' : String(value);
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
@@ -228,6 +245,7 @@ export async function runSuite(input) {
       'Ca ghi chạy trên PostgreSQL loopback dùng một lần, không phản ánh DB cloud.',
       'Mỗi lượt ghi tạo DB con mới nên p50/p95 gồm cả DB còn lạnh sau migrate.',
       'Ca đọc trộn /health và hai truy vấn danh sách; đọc perPath trong file gốc.',
+      'Ca đọc: request bị cắt khi đóng cửa sổ đo vẫn là TIMEOUT trong file gốc, được đếm riêng ở cutAtWindowEnd và không làm lượt hỏng.',
     ],
     cases: caseSummaries,
   };
