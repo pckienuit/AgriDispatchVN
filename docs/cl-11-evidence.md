@@ -82,9 +82,9 @@ Codex chạy lại theo yêu cầu của Hơn bằng tài khoản demo synthetic
 
 Ba truy vấn Azure Monitor đều trả HTTP 200. Booking `AppServiceConsoleLogs` và Account `ContainerLogV2` cùng ghi HTTP 200 với request ID `cl11-rerun-69ddbc8c-63d6-48cc-a52f-f0ced9464263-provider` lúc 10:13:54. SHA Account là `25dcb2cbcdfde78bd19803cab3eed15f57f27b5a`. `FunctionAppLogs` ghi `thumbnail_stored`, `created=true` lúc 10:14:07 với invocation `588de769-2fc3-4d72-93ba-e03aff8fc57f`. Cả ba kết quả đã đọc được lúc 10:17:57.
 
-## Lượt chạy lại độc lập bởi thành viên nhóm (Phan Chí Kiên, 23/11/2026)
+## Lượt đối chiếu do trợ lý chạy thay Kiên ngày 23/11/2026
 
-Lượt kiểm chỉ đọc do trợ lý chạy thay Phan Chí Kiên (23520804), tách khỏi lượt của Hơn. Kiên chưa xác nhận tự chạy. Không đăng nhập bằng tài khoản demo, tải ảnh mới, bật alert, đổi cấu hình staging hay xóa tài nguyên. Giờ dưới đây là UTC+7.
+Lượt kiểm chỉ đọc do trợ lý chạy thay Phan Chí Kiên, tách khỏi lượt của Hơn. Kiên chưa xác nhận tự chạy. Lượt này dùng endpoint công khai và đối chiếu các dòng log đã có. Giờ dưới đây là UTC+7.
 
 | GET từ ngoài Azure | Giờ | HTTP | `X-Request-ID` |
 | --- | --- | --- | --- |
@@ -107,3 +107,13 @@ Cả bốn phản hồi có `X-Build-SHA: 12154ad9000a77384c8dabecb024cf2809d02b
 - **ActualCost:** truy vấn khoảng 20/11 00:00 đến 23/11 22:51:17. `rg-is402-agri` có **2,077631 USD** trước thuế; `MC_rg-is402-agri_aks-agri-bt05a1` không có dòng trong kết quả. Số liệu đến muộn có thể đổi; không suy ra nhóm phụ miễn phí hay số dư credit mới.
 - **Quota và tài nguyên:** DSv4 **4/4 vCPU**, tổng Japan East **4/6 vCPU**. `az resource list` trả 24 mục trong `rg-is402-agri`, gồm hai Web App, Function, plan B1 theo hồ sơ staging, AKS, PostgreSQL, ACR, Key Vault, Log Analytics, lưu trữ và mạng, có cả VPN gateway/IP đã có. Workspace giữ 30 ngày, cap 0,5 GB/ngày.
 - **Budget:** `az rest` PUT thành công và GET độc lập lúc 22:46:26 xác nhận `budget-rg-is402-agri` ở scope `rg-is402-agri`, API `2023-11-01`, `49 USD`, `Monthly`, `Cost`, 01/11/2026 đến 31/01/2027 (UTC). Cả ba thông báo Actual 50%, 80%, 100% bật, email nhận đã đối chiếu. Đây là cảnh báo, không phải cơ chế ngắt chi tiêu. Budget mới báo `currentSpend=0 USD`, không thay số ActualCost trên.
+
+## Kiểm lại budget và trích log cho slide CL-15
+
+Lúc **23:14:16 ngày 23/11/2026 (UTC+7)**, GET Azure trả HTTP 200 cho budget `budget-rg-is402-agri` ở cấp resource group, **49 USD/tháng**. Cả ba ngưỡng **Actual 50%, 80%, 100%** đang bật và mỗi ngưỡng có một đầu mối nhận. `currentSpend` của budget đã cập nhật lên **2,077631 USD**, khớp lần đọc ActualCost cùng giờ cho `rg-is402-agri` từ 20/11 00:00. Cost Management trả danh sách rỗng cho nhóm tài nguyên phụ của AKS trong cùng khoảng đo. Quota Japan East vẫn **4/4 vCPU DSv4**, **4/6 vCPU toàn vùng**. [Azure Cost Management Budgets](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets)
+
+Dự toán 48 giờ ban đầu là **27,29 USD**. Cộng khoảng **5,57 USD** cho VPN và Public IP CL-05 đến hết 24/11 và **0,0062 USD** compute tăng thêm cho lượt S1 CL-07, dự toán cập nhật khoảng **32,87 USD** nếu tài nguyên VPN được dọn đúng mốc. Chi phí thực ở trên là số Azure đã ghi nhận tại thời điểm đọc. [VPN và mốc giữ CL-05](cl-05-evidence.md#5-kiểm-https-tls-và-dữ-liệu-từ-staging) · [Lượt S1 CL-07](cl-07-evidence.md#ca-b-không-sẵn-sàng-ngày-23112026)
+
+Truy vấn KQL lại lúc **23:14:48** cho khung sự kiện **10:10–10:20** cùng ngày trả HTTP 200 và ba bản ghi trong `law-agri-bt05a1`. Ảnh trích xuất giữ giờ sự kiện, request ID của Booking/Account và invocation ID của Function để dùng trên slide. [Tải ảnh kết quả KQL](cl-11-log-analytics.png)
+
+**Trạng thái bàn giao.** Budget cấp resource group đã được xác nhận đang hoạt động. Còn chờ một thành viên nhóm tự chạy phần kiểm trước demo và xác nhận kết quả theo [runbook](cl-11-runbook.md#kiểm-trước-demo).
