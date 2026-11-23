@@ -212,3 +212,7 @@ Kiểm local trước deploy trên Node `26.13.1` trong image test của repo. `
 
 1. Gắn vào issue #51 phê duyệt CL-02 đã có và bản đọc lại credit, quota kèm ngày giờ. Phê duyệt cấu hình và ngân sách phải có trước thao tác tạo thêm tài nguyên. Nếu số liệu khác lần đọc đã duyệt, báo Kiên trước khi tiếp tục provision. [Mốc ngân sách CL-02](cloud.md)
 2. Duyên dùng phần đối chiếu staging ở đầu hồ sơ để kiểm URL, schema, release và cách phục hồi. Kết quả PostgreSQL từ máy ngoài Azure đã có ở mục 5. Chốt issue sau khi Duyên xác nhận đã nhận hồ sơ nhánh cloud. Lượt push tự deploy đã có minh chứng ở CL-04. [CL-04 #50](https://github.com/pckienuit/AgriDispatchVN/issues/50)
+
+## Đọc lại staging ngày 23/11/2026
+
+Phan Chí Kiên (23520804) kiểm từ ngoài Azure lúc 22:51:17 đến 22:51:18 (UTC+7): booking `/health`, `/ready` và `/api/services` đều HTTP 200, `X-Build-SHA` là `12154ad9000a77384c8dabecb024cf2809d02b67`. Lượt này không thử lại kết nối PostgreSQL trực tiếp từ ngoài Azure qua đường private và không dựng VPN/Bastion mới. Giữ nguyên minh chứng Windows qua OpenVPN Point-to-Site lúc 22:36:04 ở mục 5; không suy từ HTTP 200 rằng đường private đã được kiểm lại. Chưa có xác nhận bàn giao từ Lê Kỳ Duyên.

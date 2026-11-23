@@ -81,3 +81,29 @@ Codex chạy lại theo yêu cầu của Hơn bằng tài khoản demo synthetic
 | Quota và lượng log | Japan East DSv4 **4/4 vCPU**, toàn vùng **4/6 vCPU**. Truy vấn `Usage` lúc 10:15:43 trả **10,763592 MB** billable trong 24 giờ gần nhất, workspace giữ 30 ngày với cap 0,5 GB/ngày. Số credit gần nhất do Hơn xác nhận là **98,52 USD**, chưa có số đọc Sponsorships mới trong lượt này. |
 
 Ba truy vấn Azure Monitor đều trả HTTP 200. Booking `AppServiceConsoleLogs` và Account `ContainerLogV2` cùng ghi HTTP 200 với request ID `cl11-rerun-69ddbc8c-63d6-48cc-a52f-f0ced9464263-provider` lúc 10:13:54. SHA Account là `25dcb2cbcdfde78bd19803cab3eed15f57f27b5a`. `FunctionAppLogs` ghi `thumbnail_stored`, `created=true` lúc 10:14:07 với invocation `588de769-2fc3-4d72-93ba-e03aff8fc57f`. Cả ba kết quả đã đọc được lúc 10:17:57.
+
+## Lượt chạy lại độc lập bởi thành viên nhóm (Phan Chí Kiên, 23/11/2026)
+
+Lượt kiểm chỉ đọc do trợ lý chạy thay Phan Chí Kiên (23520804), tách khỏi lượt của Hơn. Kiên chưa xác nhận tự chạy. Không đăng nhập bằng tài khoản demo, tải ảnh mới, bật alert, đổi cấu hình staging hay xóa tài nguyên. Giờ dưới đây là UTC+7.
+
+| GET từ ngoài Azure | Giờ | HTTP | `X-Request-ID` |
+| --- | --- | --- | --- |
+| `/health` | 22:51:17 | 200 | `d084fc99-16b9-4004-90c5-a7826f1485d3` |
+| `/ready` | 22:51:18 | 200 | `8d7da9d2-8f10-4868-8d99-40bd02de96d1` |
+| `/api/services` | 22:51:18 | 200 | `16d1294c-93bc-4316-a80d-e0fef6764c7b` |
+| `/api/me` chưa đăng nhập | 22:51:18 | 401 (dự kiến) | `c1db40ae-6fda-4903-9689-2ca0c887c0b8` |
+
+Cả bốn phản hồi có `X-Build-SHA: 12154ad9000a77384c8dabecb024cf2809d02b67`.
+
+`az monitor log-analytics query` trên `law-agri-bt05a1` lúc 22:52:20 đến 22:52:21: cả ba truy vấn runbook trả HTTP 200, 0 dòng trong cửa sổ 1 giờ theo bộ lọc đã dùng (Booking và Account lọc theo request ID `/ready`; Function không có upload mới). Đổi cửa sổ sang 10:10 đến 10:20 cùng ngày để kiểm minh chứng đã ghi; mỗi truy vấn trả HTTP 200 và 1 dòng:
+
+| Bảng | Giờ sự kiện | Dữ liệu đối chiếu |
+| --- | --- | --- |
+| `AppServiceConsoleLogs` | 10:13:54.541 | HTTP 200, Booking `12154ad`, ID `cl11-rerun-69ddbc8c-63d6-48cc-a52f-f0ced9464263-provider` |
+| `ContainerLogV2` | 10:13:54.537 | HTTP 200, Account `25dcb2c`, cùng request ID |
+| `FunctionAppLogs` | 10:14:07 | Invocation `588de769-2fc3-4d72-93ba-e03aff8fc57f` |
+
+- **Alert:** `cl11-booking-demo-401` là `enabled=false`. Azure Alerts Management history xác nhận `688196f7-48d5-408a-858f-7c0b12a5f000` phát lúc 01:15:00, chuyển `Resolved` lúc 01:21:56.
+- **ActualCost:** truy vấn khoảng 20/11 00:00 đến 23/11 22:51:17. `rg-is402-agri` có **2,077631 USD** trước thuế; `MC_rg-is402-agri_aks-agri-bt05a1` không có dòng trong kết quả. Số liệu đến muộn có thể đổi; không suy ra nhóm phụ miễn phí hay số dư credit mới.
+- **Quota và tài nguyên:** DSv4 **4/4 vCPU**, tổng Japan East **4/6 vCPU**. `az resource list` trả 24 mục trong `rg-is402-agri`, gồm hai Web App, Function, plan B1 theo hồ sơ staging, AKS, PostgreSQL, ACR, Key Vault, Log Analytics, lưu trữ và mạng, có cả VPN gateway/IP đã có. Workspace giữ 30 ngày, cap 0,5 GB/ngày.
+- **Budget:** `az rest` PUT thành công và GET độc lập lúc 22:46:26 xác nhận `budget-rg-is402-agri` ở scope `rg-is402-agri`, API `2023-11-01`, `49 USD`, `Monthly`, `Cost`, 01/11/2026 đến 31/01/2027 (UTC). Cả ba thông báo Actual 50%, 80%, 100% bật, email nhận đã đối chiếu. Đây là cảnh báo, không phải cơ chế ngắt chi tiêu. Budget mới báo `currentSpend=0 USD`, không thay số ActualCost trên.
