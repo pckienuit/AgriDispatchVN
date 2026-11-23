@@ -25,7 +25,7 @@
 
 ## Tìm log trong Log Analytics
 
-Mở **Log Analytics workspaces → `law-agri-bt05a1` → Logs**. Dùng cùng `X-Request-ID` thu từ một lượt đăng nhập demo hoặc request qua account gateway. Khoảng tìm mặc định 60 phút. Giữ thời gian UTC của log và ghi thêm giờ Việt Nam trong biên bản.
+Mở **Log Analytics workspaces → `law-agri-bt05a1` → Logs**. Để lấy ID chung cho Booking và Account, mở **Network** trong DevTools trước khi đăng nhập demo. Chọn `POST /api/auth/login`, rồi chép `X-Request-ID` từ phần **Response Headers**. Dùng ID này cho hai truy vấn đầu. ID của `/ready` không phải ID đăng nhập được dùng để đối chiếu hai bảng. Truy vấn Function theo giờ upload mẫu ở bước 3. Khoảng tìm mặc định 60 phút. Giữ thời gian UTC của log và ghi thêm giờ Việt Nam trong biên bản.
 
 ```kusto
 let probe = "REQUEST_ID_TU_LUOT_KIEM";
@@ -69,7 +69,8 @@ Khi chưa thấy bảng hoặc lượt log, kiểm Diagnostic settings của res
 ## Mốc chi phí và bàn giao sau demo
 
 1. Hơn đọc lại **Cost Management → Cost analysis** cho cả `rg-is402-agri` và `MC_rg-is402-agri_aks-agri-bt05a1`. Ghi giờ đọc, khoảng dữ liệu, USD, credit từ **Azure Sponsorships** và quota DSv4/toàn vùng ở Japan East. Đối chiếu chi phí với số GB trong **Usage and estimated costs** của workspace.
-2. Mốc đề xuất là trước demo, ngay sau demo và 01:08 ngày 25/11/2026 (UTC+7), tương ứng dự toán 48 giờ. Sau demo 48–72 giờ, đọc lại để bổ sung dữ liệu đến muộn. Nếu demo dời, ghi mốc mới và tính lại phí giữ tài nguyên trước khi gia hạn.
-3. Trước khi dọn, kiểm nhu cầu CL-09, lưu minh chứng log/alert, xác định bản sao dữ liệu cần giữ và liệt kê từng resource. Tính cả App Service plan, đĩa và mạng AKS, PostgreSQL storage/backup, ACR, Blob và Monitor. Kiên duyệt riêng từng phạm vi dọn. Sau khi được duyệt, Hơn dùng chính công cụ đã quản lý tài nguyên, kiểm lại từng resource và chi phí còn phát sinh. [Độ trễ dữ liệu chi phí](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/understand-cost-mgt-data)
+2. Trong resource group `rg-is402-agri`, mở **Cost Management → Budgets → `budget-rg-is402-agri`**. Đối chiếu **49 USD/tháng**, ngày hết hạn 31/01/2027 và cảnh báo Actual ở 50%, 80%, 100%. Budget gửi cảnh báo chi phí. Cost analysis vẫn là nơi đọc chi phí thực của từng resource group. [Azure Budgets](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets)
+3. Mốc đề xuất là trước demo, ngay sau demo và 01:08 ngày 25/11/2026 (UTC+7), tương ứng dự toán 48 giờ. VPN và Public IP của CL-05 có mốc giữ hết 24/11/2026 (UTC+7), cần đối chiếu phạm vi dọn được duyệt ở mốc đó. Sau demo 48–72 giờ, đọc lại để bổ sung dữ liệu đến muộn. Nếu demo dời, ghi mốc mới và tính lại phí giữ tài nguyên trước khi gia hạn.
+4. Trước khi dọn, kiểm nhu cầu CL-09, lưu minh chứng log/alert, xác định bản sao dữ liệu cần giữ và liệt kê từng resource. Tính cả App Service plan, đĩa và mạng AKS, PostgreSQL storage/backup, ACR, Blob và Monitor. Kiên duyệt riêng từng phạm vi dọn. Sau khi được duyệt, Hơn dùng chính công cụ đã quản lý tài nguyên, kiểm lại từng resource và chi phí còn phát sinh. [Độ trễ dữ liệu chi phí](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/understand-cost-mgt-data)
 
 Ghi lượt chạy lại vào [hồ sơ CL-11](cl-11-evidence.md) cùng ngày giờ, tên người chạy và điểm cần sửa. Trạng thái xác nhận của người chạy thứ hai được ghi trong hồ sơ.
