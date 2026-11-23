@@ -59,3 +59,4 @@ Default production thresholds in `server/src/account-app.js` (900-second window)
 Keep `app.js`, `config.js`, and `server.js` wired so `booking-service` passes:
 - `internalServiceToken` into `createAccountGateway(...)`
 - bounded numeric `TRUST_PROXY_HOPS` (`0..10`, default `0`) and optional `TRUSTED_PROXY_CIDRS` from environment configuration.
+- optional `SERVICES_CACHE_MS` (`0..300000`, default `0` = off): in-memory TTL for `GET /api/services` per instance. Catalog edits by seed or SQL may be served stale for up to this long.

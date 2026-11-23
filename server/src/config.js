@@ -7,7 +7,14 @@ export function readBookingConfig(env = process.env) {
   const hops = env.TRUST_PROXY_HOPS ?? '0';
   if (!/^(?:[0-9]|10)$/.test(hops)) throw new Error('Invalid trusted proxy configuration');
   const cidrs = env.TRUSTED_PROXY_CIDRS === undefined ? null : env.TRUSTED_PROXY_CIDRS.split(',').map(s => s.trim());
-  return { ...base, accountServiceUrl: env.ACCOUNT_SERVICE_URL, internalServiceToken: token, trustedProxyHops: Number(hops), trustedProxyCidrs: cidrs };
+  return { ...base, accountServiceUrl: env.ACCOUNT_SERVICE_URL, internalServiceToken: token, trustedProxyHops: Number(hops), trustedProxyCidrs: cidrs, servicesCacheMs: readServicesCacheMs(env) };
+}
+
+// Optional public service list cache in ms (CL-12). Unset or 0 keeps the cache off.
+export function readServicesCacheMs(env = process.env) {
+  const text = env.SERVICES_CACHE_MS ?? '0';
+  if (!/^\d{1,6}$/.test(text) || Number(text) > 300000) throw new Error('SERVICES_CACHE_MS must be an integer between 0 and 300000');
+  return Number(text);
 }
 
 export function readConfig(env = process.env) {

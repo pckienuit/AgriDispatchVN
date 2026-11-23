@@ -206,3 +206,55 @@ test('disposable database root must be a PostgreSQL URL naming a *_test database
     assert.throws(() => parseRootDatabaseUrl(root), Error, String(root));
   }
 });
+
+test('service list cache serves repeats from memory until the TTL ends, per page, and is off by default', async (t) => {
+  const row = (name) => ({ id: '00000000-0000-4000-8000-000000000101', code: 'tillage-tractor', name, price_per_ha_vnd: '900000', data_label: 'synthetic' });
+  let queries = 0;
+  let name = 'v1';
+  const pool = { async query() { queries += 1; return { rows: [row(name)] }; } };
+  let clock = 1000;
+  const listen = async (router) => {
+    const app = express();
+    app.use(router);
+    const server = app.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    t.after(() => new Promise((resolve) => server.close(resolve)));
+    return `http://127.0.0.1:${server.address().port}`;
+  };
+  const cachedUrl = await listen(createCatalogRouter({ pool, authenticate: testAuthenticate, servicesCacheMs: 30000, now: () => clock }));
+  const names = async (path) => (await (await fetch(cachedUrl + path)).json()).items.map((item) => item.name);
+
+  assert.deepEqual(await names('/api/services'), ['v1']);
+  name = 'v2';
+  assert.deepEqual(await names('/api/services'), ['v1'], 'within TTL the cached body is served');
+  assert.equal(queries, 1);
+  assert.deepEqual(await names('/api/services?limit=5'), ['v2'], 'each page has its own entry');
+  assert.equal(queries, 2);
+  clock += 30001;
+  assert.deepEqual(await names('/api/services'), ['v2'], 'after TTL the list is read again');
+  assert.equal(queries, 3);
+
+  queries = 0;
+  const plainUrl = await listen(createCatalogRouter({ pool, authenticate: testAuthenticate }));
+  await fetch(plainUrl + '/api/services');
+  await fetch(plainUrl + '/api/services');
+  assert.equal(queries, 2, 'default servicesCacheMs is 0, every request reads the DB');
+
+  for (const servicesCacheMs of [-1, 1.5, 300001, '30000']) {
+    assert.throws(() => createCatalogRouter({ pool, authenticate: testAuthenticate, servicesCacheMs }), TypeError);
+  }
+});
+
+test('failed service list reads are not cached', async (t) => {
+  let fail = true;
+  const pool = { async query() { if (fail) throw Object.assign(new Error('down'), { code: 'ECONNREFUSED' }); return { rows: [] }; } };
+  const app = express();
+  app.use(createCatalogRouter({ pool, authenticate: testAuthenticate, servicesCacheMs: 30000 }));
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const url = `http://127.0.0.1:${server.address().port}/api/services`;
+  assert.equal((await fetch(url)).status, 503);
+  fail = false;
+  assert.equal((await fetch(url)).status, 200);
+});

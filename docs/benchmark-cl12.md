@@ -26,7 +26,9 @@
 | Cloud Japan East | booking, recruitment | Thiếu | Chưa chạy | | | | | |
 | Cloud Central India | read | Đủ | 30/30 | 0 | 158 | 182 | 313 | Không áp dụng |
 | Cloud Central India | booking, recruitment | Thiếu | Chưa chạy | | | | | |
-| Sau tối ưu | Cả ba ca | Thiếu | Chưa chạy | | | | | |
+| Local, sau tối ưu | read | Đủ | 30/30 mỗi lượt, 2 lượt | 0 | Xem mục Trước và sau tối ưu | | | Không áp dụng |
+| Local, sau tối ưu | booking, recruitment | Thiếu | Chưa chạy (tối ưu không chạm đường ghi) | | | | | |
+| Cloud, sau tối ưu | Cả ba ca | Thiếu | Chưa deploy bản có cache | | | | | |
 
 - `read`: trung vị 1166,9 request/giây. `/health` p50 2 ms, p95 3 ms; `/api/services` 4 ms, 6 ms; `/api/jobs` 4 ms, 7 ms.
 - `recruitment` theo pha (trung vị p50, p95): `apply` 33,5 ms, 74 ms; `offer` 68,5 ms, 117 ms; `accept` 46 ms, 62,5 ms. Cả 30 lượt đều có đúng 3 người được nhận, không lượt nào vượt chỗ.
@@ -34,6 +36,27 @@
 - Central India `read`: trung vị 27,6 request/giây, 4176 request, không có 4xx hoặc 5xx. `/health` p50 89 ms, p95 105,5 ms; `/api/services` 163 ms, 185,5 ms; `/api/jobs` 163 ms, 185,5 ms. Có 117 request bị cắt khi đóng cửa sổ đo. Lần gọi `/health` và `/ready` đầu tiên trước khi đo bị timeout 30 giây do container khởi động lạnh; các lần sau trả 200.
 - Hai lần chạy cloud trước đó (`cl12-cloud-japaneast-20261123-1359` và `-1402`) ghi `read` 0/30 vì bộ chạy khi đó tính request bị cắt ở biên cửa sổ là lỗi. Không có lỗi 4xx hoặc 5xx trong hai lần này.
 - Lần chạy trước đó cùng ngày (`cl12-local-before-20261123-1028`) có ca `recruitment` 0/30: cả 11 lượt lỗi `REGISTER_429`. Ca này được ghi là thiếu, rồi chạy lại sau khi sửa harness.
+
+## Trước và sau tối ưu
+
+Tối ưu: cache danh sách dịch vụ `GET /api/services` trong bộ nhớ của booking app, theo từng trang, hết hạn sau 30 giây. Bật bằng biến `SERVICES_CACHE_MS=30000`; mặc định 0 là tắt.
+
+Lý do: danh mục dịch vụ không có API sửa, chỉ đổi khi chạy seed hoặc migration, nhưng mỗi request đều đọc DB. Ở Central India, đường đọc DB chậm hơn `/health` khoảng 74 ms.
+
+Đánh đổi: sau khi sửa danh mục bằng seed hoặc SQL, mỗi instance có thể trả dữ liệu cũ tối đa 30 giây.
+
+Cách đo: cùng commit, cùng máy, cùng cấu hình `read` như `local-baseline`, chỉ khác `SERVICES_CACHE_MS`. Chạy xen kẽ trước, sau, trước, sau ngày 23/11/2026, 23:05 đến 23:10 (UTC+07). Giá trị cache được ghi ở `config.read.localServicesCacheMs` trong `suite.json`. Dữ liệu gốc: `~/agridispatch-bench/cl12-local-{before,after}-opt-{1,2}-20261123-2305/`.
+
+| Lượt | Cache | `/health` p50 / p95 (ms) | `/api/services` p50 / p95 (ms) | `/api/jobs` p50 / p95 (ms) | Cả ca req/s | Lượt hợp lệ |
+| --- | --- | --- | --- | --- | --- | --- |
+| before-opt 1 | Tắt | 1 / 1 | 2 / 4 | 2 / 4 | 2171,6 | 30/30 |
+| after-opt 1 | 30 giây | 1 / 2 | 1 / 2 | 3 / 5 | 1873,6 | 30/30 |
+| before-opt 2 | Tắt | 2 / 4 | 4 / 8 | 4 / 8,5 | 1009,1 | 30/30 |
+| after-opt 2 | 30 giây | 2 / 5 | 2 / 5 | 6 / 11 | 962,6 | 30/30 |
+
+- Khi tắt cache, `/api/services` chậm như `/api/jobs` (cùng phải đọc DB). Khi bật cache, `/api/services` nhanh ngang `/health`: lượt đọc DB đã được bỏ. Trên loopback, mức giảm chỉ khoảng 1 đến 2 ms mỗi request.
+- Số req/s của cả ca dao động theo trạng thái máy (2171,6 rồi 1009,1 ở hai lượt tắt cache), lớn hơn nhiều so với tác động của cache, nên không dùng để kết luận. Tải closed-loop xoay vòng ba đường, nên một đường nhanh hơn không làm tăng req/s của cả ca.
+- Chưa đo trên cloud. Staging đang chạy `12154ad`, chưa có code cache; cần deploy bản mới và đặt `SERVICES_CACHE_MS` mới đo được.
 
 ## Giới hạn
 

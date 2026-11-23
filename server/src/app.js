@@ -22,7 +22,7 @@ import { createLocalServiceExtensionsRouter } from './local-service-extensions.j
 import { createPlatformControlsRouter } from './platform-controls.js';
 const { AbortSignal } = globalThis;
 
-export function createApp({ pool, accountServiceUrl, internalServiceToken, trustedProxyHops = 0, trustedProxyCidrs = null, buildSha = 'development', log, evidenceStore = null }) {
+export function createApp({ pool, accountServiceUrl, internalServiceToken, trustedProxyHops = 0, trustedProxyCidrs = null, buildSha = 'development', log, evidenceStore = null, servicesCacheMs = 0 }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(createRequestContext({serviceName:'booking-service',buildSha,log}));
@@ -49,7 +49,7 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken, trust
   if (accountServiceUrl !== undefined || internalServiceToken !== undefined) {
     const authenticate = createAccountAuth({ accountServiceUrl, internalServiceToken });
     app.use(createAccountGateway({ accountServiceUrl, internalServiceToken, trustedProxyHops, trustedProxyCidrs }));
-    app.use(createCatalogRouter({ pool, authenticate }));
+    app.use(createCatalogRouter({ pool, authenticate, servicesCacheMs }));
     app.use(createFieldDetailsRouter({ pool, authenticate }));
     app.use(createBookingRouter({ pool, authenticate }));
     app.use(createRecruitmentRouter({ pool, authenticate }));

@@ -95,9 +95,18 @@ function isDbUnavailable(error) {
     || error.message === POOL_CONNECT_TIMEOUT_MESSAGE;
 }
 
-export function createCatalogRouter({ pool, authenticate }) {
+// Public service list cache (CL-12 optimisation). No route writes dispatch.services; it changes only through seed or
+// migration, so a short TTL is the only invalidation. 0 disables the cache. Bounded so arbitrary offsets cannot grow it.
+export const MAX_SERVICES_CACHE_MS = 300000;
+const SERVICES_CACHE_ENTRIES = 32;
+
+export function createCatalogRouter({ pool, authenticate, servicesCacheMs = 0, now = Date.now }) {
   if (typeof pool?.query !== 'function') throw new TypeError('createCatalogRouter requires a pool with query()');
   if (typeof authenticate !== 'function') throw new TypeError('createCatalogRouter requires an authenticate middleware');
+  if (!Number.isInteger(servicesCacheMs) || servicesCacheMs < 0 || servicesCacheMs > MAX_SERVICES_CACHE_MS) {
+    throw new TypeError(`servicesCacheMs must be an integer in [0, ${MAX_SERVICES_CACHE_MS}]`);
+  }
+  const servicesCache = new Map();
 
   const router = express.Router();
 
@@ -135,12 +144,20 @@ export function createCatalogRouter({ pool, authenticate }) {
 
   router.get('/api/services', handle(async (req, res) => {
     const { limit, offset } = parsePagination(req.query);
+    const key = `${limit}:${offset}`;
+    const cached = servicesCacheMs > 0 ? servicesCache.get(key) : undefined;
+    if (cached && cached.expiresAt > now()) return res.json(cached.body);
     const { rows } = await pool.query(
       `SELECT id, code, name, price_per_ha_vnd::text AS price_per_ha_vnd, data_label
          FROM dispatch.services WHERE active ORDER BY code, id LIMIT $1 OFFSET $2`,
       [limit, offset],
     );
-    res.json({ items: rows.map(serviceDto), limit, offset });
+    const body = { items: rows.map(serviceDto), limit, offset };
+    if (servicesCacheMs > 0) {
+      if (!servicesCache.has(key) && servicesCache.size >= SERVICES_CACHE_ENTRIES) servicesCache.clear();
+      servicesCache.set(key, { body, expiresAt: now() + servicesCacheMs });
+    }
+    return res.json(body);
   }));
 
   router.get('/api/services/:id', handle(async (req, res) => {

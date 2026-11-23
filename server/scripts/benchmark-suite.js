@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { createAccountApp } from '../src/account-app.js';
 import { createApp } from '../src/app.js';
+import { readServicesCacheMs } from '../src/config.js';
 import { createPool } from '../src/db.js';
 import { createDisposableDatabase } from '../tests/helpers/test-db.js';
 import { OptionError, closeAll, isInsideRepo, listen, originOf, parseLocalRoot, runBookingBenchmark } from './benchmark-bookings.js';
@@ -130,7 +131,7 @@ export function toSummaryMarkdown(suite) {
   return `${[...head, ...rows, '', 'Số liệu từng lượt ở summary.csv và runs/. Ca có trạng thái "thiếu" chưa đủ lượt hợp lệ, không được ghi là đạt.', ''].join('\n')}`;
 }
 
-async function startLocalReadTarget(rootDatabaseUrl) {
+async function startLocalReadTarget(rootDatabaseUrl, servicesCacheMs) {
   const state = { child: null, pool: null, servers: [] };
   try {
     state.child = await createDisposableDatabase(parseLocalRoot(rootDatabaseUrl).href);
@@ -140,7 +141,7 @@ async function startLocalReadTarget(rootDatabaseUrl) {
     const token = randomBytes(32).toString('base64url');
     const account = await listen(createAccountApp({ pool: state.pool, internalServiceToken: token }));
     state.servers.push(account);
-    const app = await listen(createApp({ pool: state.pool, accountServiceUrl: originOf(account), internalServiceToken: token }));
+    const app = await listen(createApp({ pool: state.pool, accountServiceUrl: originOf(account), internalServiceToken: token, servicesCacheMs }));
     state.servers.push(app);
     return { baseUrl: originOf(app), close: () => closeAll(state) };
   } catch (error) {
@@ -181,11 +182,13 @@ export async function runSuite(input) {
   const bookingConfig = { count: 30, concurrency: 4, timeoutMs: 3000, ...booking };
   const recruitmentConfig = { operators: 10, capacity: 3, concurrency: 10, timeoutMs: 3000, ...recruitment };
   let readTarget = remoteRead ? readConfig.baseUrl : 'local in-process, disposable PostgreSQL';
+  // Local read target only: same env switch as server.js, so before/after optimisation runs differ in this value alone.
+  const localServicesCacheMs = remoteRead ? null : readServicesCacheMs(process.env);
 
   for (const caseName of opts.cases) {
     let localRead = null;
     if (caseName === 'read' && !remoteRead) {
-      localRead = await startLocalReadTarget(rootDatabaseUrl);
+      localRead = await startLocalReadTarget(rootDatabaseUrl, localServicesCacheMs);
       readTarget = 'local in-process, disposable PostgreSQL';
     }
     const runOnce = async () => {
@@ -239,7 +242,7 @@ export async function runSuite(input) {
       buildSha,
       host: { platform: os.platform(), release: os.release(), cpus: os.cpus().length, cpuModel: os.cpus()[0]?.model?.trim() ?? null, totalMemMiB: Math.round(os.totalmem() / 1048576), node: process.version },
     },
-    config: { runs: opts.runs, warmupRuns: opts.warmupRuns, maxInvalid: opts.maxInvalid, cases: opts.cases, read: { ...readConfig, baseUrl: remoteRead ? readConfig.baseUrl : null }, booking: bookingConfig, recruitment: recruitmentConfig },
+    config: { runs: opts.runs, warmupRuns: opts.warmupRuns, maxInvalid: opts.maxInvalid, cases: opts.cases, read: { ...readConfig, baseUrl: remoteRead ? readConfig.baseUrl : null, localServicesCacheMs }, booking: bookingConfig, recruitment: recruitmentConfig },
     limits: [
       'Tải closed-loop trên một máy phát tải; không phải SLA hay công suất tối đa.',
       'Ca ghi chạy trên PostgreSQL loopback dùng một lần, không phản ánh DB cloud.',

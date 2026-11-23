@@ -42,3 +42,12 @@ test('booking process exits before listening when identity configuration is abse
     return true;
   });
 });
+
+test('SERVICES_CACHE_MS is optional, defaults to off and is bounded', () => {
+  const env = { DATABASE_URL: 'postgresql://u:p@127.0.0.1:5432/app', ACCOUNT_SERVICE_URL: 'http://account:3001', INTERNAL_SERVICE_TOKEN: 'x'.repeat(32) };
+  assert.equal(readBookingConfig(env).servicesCacheMs, 0);
+  assert.equal(readBookingConfig({ ...env, SERVICES_CACHE_MS: '30000' }).servicesCacheMs, 30000);
+  for (const SERVICES_CACHE_MS of ['-1', '1.5', '300001', 'abc', '']) {
+    assert.throws(() => readBookingConfig({ ...env, SERVICES_CACHE_MS }), /SERVICES_CACHE_MS/, SERVICES_CACHE_MS);
+  }
+});
