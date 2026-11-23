@@ -40,9 +40,14 @@ export function validateOptions(options) {
     || out.maxRequests + out.warmupMaxRequests > MAX_ROWS) {
     throw new OptionError('INVALID_OPTION', `warmupMaxRequests phải trong [0, 10000] và tổng dòng <= ${MAX_ROWS}`);
   }
+  return { ...out, ...validateOrigin(options) };
+}
+
+// Shared target guard: loopback by default; a remote host needs allowRemote, HTTPS and an approved host name.
+export function validateOrigin({ baseUrl, allowRemote, allowedHosts }) {
   let url;
   try {
-    url = new URL(String(options.baseUrl));
+    url = new URL(String(baseUrl));
   } catch {
     throw new OptionError('INVALID_BASE_URL', 'baseUrl không hợp lệ');
   }
@@ -50,17 +55,12 @@ export function validateOptions(options) {
     || url.search || url.hash || (url.pathname !== '/' && url.pathname !== '')) {
     throw new OptionError('INVALID_BASE_URL', 'baseUrl chỉ gồm scheme, host và port');
   }
-  if (LOOPBACK_HOSTS.has(url.hostname)) {
-    out.scope = 'loopback';
-  } else {
-    if (options.allowRemote !== true) throw new OptionError('REMOTE_NOT_ALLOWED', 'host từ xa cần --allow-remote');
-    if (url.protocol !== 'https:') throw new OptionError('INSECURE_REMOTE', 'host từ xa phải dùng HTTPS');
-    const approved = (options.allowedHosts ?? []).map((host) => String(host).toLowerCase());
-    if (!approved.includes(url.hostname)) throw new OptionError('REMOTE_HOST_NOT_APPROVED', 'host từ xa chưa được phê duyệt');
-    out.scope = 'remote';
-  }
-  out.origin = url.origin;
-  return out;
+  if (LOOPBACK_HOSTS.has(url.hostname)) return { scope: 'loopback', origin: url.origin };
+  if (allowRemote !== true) throw new OptionError('REMOTE_NOT_ALLOWED', 'host từ xa cần --allow-remote');
+  if (url.protocol !== 'https:') throw new OptionError('INSECURE_REMOTE', 'host từ xa phải dùng HTTPS');
+  const approved = (allowedHosts ?? []).map((host) => String(host).toLowerCase());
+  if (!approved.includes(url.hostname)) throw new OptionError('REMOTE_HOST_NOT_APPROVED', 'host từ xa chưa được phê duyệt');
+  return { scope: 'remote', origin: url.origin };
 }
 
 export function nearestRank(values, p) {

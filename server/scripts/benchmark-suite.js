@@ -13,7 +13,8 @@ import { readServicesCacheMs } from '../src/config.js';
 import { createPool } from '../src/db.js';
 import { createDisposableDatabase } from '../tests/helpers/test-db.js';
 import { OptionError, closeAll, isInsideRepo, listen, originOf, parseLocalRoot, runBookingBenchmark } from './benchmark-bookings.js';
-import { runBenchmark, writeOutputs } from './benchmark-http.js';
+import { runBenchmark, validateOrigin, writeOutputs } from './benchmark-http.js';
+import { loadCredentials, runCloudBookingBenchmark, runCloudRecruitmentBenchmark } from './benchmark-cloud-writes.js';
 import { runRecruitmentBenchmark } from './benchmark-recruitment.js';
 import { migrate } from './migrate.js';
 import { seedCatalog } from './seed-catalog.js';
@@ -61,7 +62,7 @@ export function normalizeRun(caseName, report) {
       requests: a.attempted, p50Ms: a.p50Ms, p95Ms: a.p95Ms, throughputRps: a.throughputRps, violationCount: null, cutAtWindowEnd,
     };
   }
-  if (caseName === 'booking') {
+  if (caseName === 'booking' && !('measurementValid' in report)) {
     const a = report.aggregates;
     return {
       valid: report.ok === true,
@@ -170,17 +171,27 @@ export function validateSuiteOptions(options) {
 
 export async function runSuite(input) {
   const opts = validateSuiteOptions(input);
-  const { outputDir, read = {}, booking = {}, recruitment = {}, rootDatabaseUrl, buildSha = null, log = () => {} } = input;
+  const { outputDir, read = {}, booking = {}, recruitment = {}, rootDatabaseUrl, buildSha = null, creds = null, allowRemoteWrites = false, log = () => {} } = input;
   const remoteRead = Boolean(read.baseUrl);
-  if (opts.cases.some((name) => name !== 'read') || !remoteRead) parseLocalRoot(rootDatabaseUrl);
+  // With a base URL, write cases go through the public API (benchmark-cloud-writes.js) instead of a local database.
+  const apiWrites = remoteRead && opts.cases.some((name) => name !== 'read');
+  if (apiWrites) {
+    const { scope } = validateOrigin(read);
+    if (!creds) throw new OptionError('CREDENTIALS_REQUIRED', 'ca ghi qua API cần --credentials (tạo bằng benchmark-cloud-writes.js setup)');
+    if (scope === 'remote' && allowRemoteWrites !== true) throw new OptionError('REMOTE_WRITE_REFUSED', 'ghi lên host từ xa cần thêm --allow-remote-writes');
+  }
+  if (!remoteRead) parseLocalRoot(rootDatabaseUrl);
   const runsDir = path.join(outputDir, 'runs');
   await mkdir(runsDir);
   const startedAt = new Date().toISOString();
   const lines = [];
   const caseSummaries = [];
   const readConfig = { concurrency: 4, durationMs: 5000, warmupMs: 1000, timeoutMs: 2000, maxRequests: 2000, ...read };
-  const bookingConfig = { count: 30, concurrency: 4, timeoutMs: 3000, ...booking };
-  const recruitmentConfig = { operators: 10, capacity: 3, concurrency: 10, timeoutMs: 3000, ...recruitment };
+  const bookingConfig = apiWrites ? { count: 10, concurrency: 4, timeoutMs: 5000, ...booking } : { count: 30, concurrency: 4, timeoutMs: 3000, ...booking };
+  const recruitmentConfig = apiWrites
+    ? { capacity: 3, concurrency: creds.operators.length, timeoutMs: 5000, ...recruitment, operators: creds.operators.length }
+    : { operators: 10, capacity: 3, concurrency: 10, timeoutMs: 3000, ...recruitment };
+  const apiTarget = apiWrites ? { baseUrl: read.baseUrl, allowRemote: read.allowRemote, allowedHosts: read.allowedHosts, creds } : null;
   let readTarget = remoteRead ? readConfig.baseUrl : 'local in-process, disposable PostgreSQL';
   // Local read target only: same env switch as server.js, so before/after optimisation runs differ in this value alone.
   const localServicesCacheMs = remoteRead ? null : readServicesCacheMs(process.env);
@@ -194,7 +205,9 @@ export async function runSuite(input) {
     const runOnce = async () => {
       try {
         if (caseName === 'read') return await runBenchmark({ ...readConfig, baseUrl: localRead?.baseUrl ?? readConfig.baseUrl });
-        if (caseName === 'booking') return await runBookingBenchmark({ ...bookingConfig, rootDatabaseUrl });
+        if (caseName === 'booking') return apiWrites ? await runCloudBookingBenchmark({ ...apiTarget, ...bookingConfig }) : await runBookingBenchmark({ ...bookingConfig, rootDatabaseUrl });
+        // operators comes from the credentials file; the runner ignores the copy in recruitmentConfig.
+        if (apiWrites) return await runCloudRecruitmentBenchmark({ ...apiTarget, ...recruitmentConfig });
         return await runRecruitmentBenchmark({ ...recruitmentConfig, rootDatabaseUrl });
       } catch (error) {
         if (error instanceof OptionError) throw error;
@@ -238,15 +251,16 @@ export async function runSuite(input) {
     conditions: {
       location: opts.location,
       readTarget,
-      writeTarget: 'local in-process, disposable PostgreSQL per run',
+      writeTarget: apiWrites ? `${read.baseUrl} qua API công khai, tài khoản tổng hợp dùng lại` : 'local in-process, disposable PostgreSQL per run',
       buildSha,
       host: { platform: os.platform(), release: os.release(), cpus: os.cpus().length, cpuModel: os.cpus()[0]?.model?.trim() ?? null, totalMemMiB: Math.round(os.totalmem() / 1048576), node: process.version },
     },
     config: { runs: opts.runs, warmupRuns: opts.warmupRuns, maxInvalid: opts.maxInvalid, cases: opts.cases, read: { ...readConfig, baseUrl: remoteRead ? readConfig.baseUrl : null, localServicesCacheMs }, booking: bookingConfig, recruitment: recruitmentConfig },
     limits: [
       'Tải closed-loop trên một máy phát tải; không phải SLA hay công suất tối đa.',
-      'Ca ghi chạy trên PostgreSQL loopback dùng một lần, không phản ánh DB cloud.',
-      'Mỗi lượt ghi tạo DB con mới nên p50/p95 gồm cả DB còn lạnh sau migrate.',
+      ...(apiWrites
+        ? ['Ca ghi qua API: bất biến đọc lại bằng API, không bằng SQL; ca tuyển thợ không kiểm được số sự kiện.', 'Ca ghi qua API để lại dữ liệu tổng hợp trên đích; tin tuyển được đóng sau mỗi lượt.']
+        : ['Ca ghi chạy trên PostgreSQL loopback dùng một lần, không phản ánh DB cloud.', 'Mỗi lượt ghi tạo DB con mới nên p50/p95 gồm cả DB còn lạnh sau migrate.']),
       'Ca đọc trộn /health và hai truy vấn danh sách; đọc perPath trong file gốc.',
       'Ca đọc: request bị cắt khi đóng cửa sổ đo vẫn là TIMEOUT trong file gốc, được đếm riêng ở cutAtWindowEnd và không làm lượt hỏng.',
     ],
@@ -279,7 +293,9 @@ async function main(argv) {
       'read-concurrency': { type: 'string', default: '4' },
       'read-duration-ms': { type: 'string', default: '5000' },
       'read-warmup-ms': { type: 'string', default: '1000' },
-      'booking-count': { type: 'string', default: '30' },
+      'booking-count': { type: 'string' },
+      credentials: { type: 'string' },
+      'allow-remote-writes': { type: 'boolean', default: false },
       'recruitment-operators': { type: 'string', default: '10' },
       'recruitment-capacity': { type: 'string', default: '3' },
     },
@@ -296,7 +312,9 @@ async function main(argv) {
   if (entries.length) throw new OptionError('OUTPUT_DIR_NOT_EMPTY', 'thư mục output phải rỗng để không trộn lượt cũ');
   const sha = process.env.BUILD_SHA ?? '';
   const cases = values.cases.split(',').map((name) => name.trim()).filter(Boolean);
-  if (values['base-url'] && cases.some((name) => name !== 'read')) throw new OptionError('REMOTE_WRITE_REFUSED', '--base-url chỉ dùng cho ca read; ca ghi chỉ chạy cục bộ');
+  const writesViaApi = Boolean(values['base-url']) && cases.some((name) => name !== 'read');
+  if (writesViaApi && !values.credentials) throw new OptionError('CREDENTIALS_REQUIRED', 'ca ghi với --base-url cần --credentials');
+  const creds = writesViaApi ? await loadCredentials(values.credentials, validateOrigin({ baseUrl: values['base-url'], allowRemote: values['allow-remote'], allowedHosts: values['allowed-host'] }).origin) : null;
   const suite = await runSuite({
     outputDir,
     label: values.label,
@@ -313,7 +331,9 @@ async function main(argv) {
       durationMs: Number(values['read-duration-ms']),
       warmupMs: Number(values['read-warmup-ms']),
     },
-    booking: { count: Number(values['booking-count']) },
+    creds,
+    allowRemoteWrites: values['allow-remote-writes'],
+    booking: values['booking-count'] === undefined ? {} : { count: Number(values['booking-count']) },
     recruitment: { operators: Number(values['recruitment-operators']), capacity: Number(values['recruitment-capacity']) },
     log: (message) => console.error(message),
   });
