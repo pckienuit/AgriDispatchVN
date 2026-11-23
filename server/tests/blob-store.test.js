@@ -402,3 +402,16 @@ test('thumbnail writes are create-only to separate output container and replay s
  status=412;assert.deepEqual(await s.putThumbnail(KEY,JPEG),{created:false});
  assert.equal(seen[0].path,`/thumbnails/${KEY}.jpg`);assert.equal(seen[0].headers['if-none-match'],'*');
 });
+
+test('thumbnail treats 409 BlobAlreadyExists as an idempotent replay', async (t) => {
+  const { url } = await stub(t, (_req, res) => res.writeHead(409, { 'x-ms-error-code': 'BlobAlreadyExists' }).end());
+  assert.deepEqual(await store(url).putThumbnail(KEY, JPEG), { created: false });
+});
+
+test('thumbnail rejects 409 without a matching BlobAlreadyExists code', async (t) => {
+  let headers = { 'x-ms-error-code': 'ContainerBeingDeleted' };
+  const { url } = await stub(t, (_req, res) => res.writeHead(409, headers).end());
+  await assert.rejects(store(url).putThumbnail(KEY, JPEG), BlobStoreError);
+  headers = {};
+  await assert.rejects(store(url).putThumbnail(KEY, JPEG), BlobStoreError);
+});

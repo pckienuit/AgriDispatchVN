@@ -240,7 +240,10 @@ export function createBlobStore({
         headers:headers(await authorization(signal),{'x-ms-blob-type':'BlockBlob','If-None-Match':'*','Content-Type':'image/jpeg'}),
         body:bytes,signal,redirect:'error'});
       await discard(response);
-      if(response.status===412)return {created:false};
+      if (response.status === 412 ||
+          (response.status === 409 && response.headers.get('x-ms-error-code') === 'BlobAlreadyExists')) {
+        return { created: false };
+      }
       if(response.status!==201)throw new Error('Unexpected thumbnail status');
       return {created:true};
     });

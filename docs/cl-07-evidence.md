@@ -60,3 +60,9 @@ Lượt đọc chỉ đọc `public.schema_migrations` qua Azure PostgreSQL lúc
 | A, kiểm lại lúc 22:50:41 ngày 23/11 | HTTP 200, request `75b54491-9745-42d2-bce8-72e1f26cd763` | HTTP 200, request `b20319af-f73a-4942-b880-a53dcac50ad0` | Cùng DB staging và SHA `12154ad`. |
 
 Các lượt đọc trên Azure xác nhận A đọc được đơn cũ và đơn do B ghi sau khi đã áp dụng cả 26 migration. Còn cần lượt `GET` trực tiếp cả hai đơn trên B và ca B không sẵn sàng, trong khung nâng S1 được duyệt riêng. [Issue CL-07 #53](https://github.com/pckienuit/AgriDispatchVN/issues/53)
+
+## Rà soát không đổi staging, 23/11/2026
+
+Phan Chí Kiên (23520804) đối chiếu `git diff 12154ad..15c7a1a -- db/migrations`: `001` đến `017` giống nhau từng byte; B có 9 file mới `018` đến `026`. Lịch sử DB ở trên xác nhận 9 file này **đã áp dụng**, không suy trạng thái schema từ SHA đang chạy. `019_field_inspections.sql` thêm trigger `shifts_guard_inspection` chặn bắt đầu ca khi thiếu kết quả kiểm tra HTX hợp lệ. Rollback image về A không gỡ trigger; kiểm đọc đơn không chứng minh thao tác bắt đầu ca trên A còn tương thích.
+
+`node --test server/scripts/cloud/deploy-health.test.js`: 17/17 đạt, gồm ca B không sẵn sàng thì không gọi swap và không đổi production. Chưa chạy ca âm trên Azure; lượt này không nâng S1. Unit test không thay minh chứng Azure.
