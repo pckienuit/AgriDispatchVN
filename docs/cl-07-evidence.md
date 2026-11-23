@@ -17,6 +17,8 @@ Ngày 22/11/2026. Tất cả mốc giờ dưới đây theo giờ Việt Nam (UT
 | A | `12154ad9000a77384c8dabecb024cf2809d02b67` | `acris402agri.azurecr.io/agridispatch-vn@sha256:737651fd587c06c992e38409126bab661d858afd744cf4c47f79023d56f9fb37` |
 | B | `15c7a1ae81e884b1de96d11c1065cf8a572eb9b2` | `acris402agri.azurecr.io/agridispatch-vn@sha256:d8280e182ff9682f6c962b57f330bc72928a56a26f3d021de88e846455773aae` |
 
+Ngày 23/11/2026, đã đối chiếu cả hai tag SHA với digest trong ACR. A thuộc nhánh [`demo/cl05-b1`](https://github.com/pckienuit/AgriDispatchVN/commit/12154ad9000a77384c8dabecb024cf2809d02b67) và nằm ngoài lịch sử ancestry của nhánh cloud. B là [`15c7a1a`](https://github.com/pckienuit/AgriDispatchVN/commit/15c7a1ae81e884b1de96d11c1065cf8a572eb9b2), một commit trong lịch sử nhánh cloud. SHA A trong log là SHA của image thực tế đang phục vụ URL staging B1.
+
 ## Kết quả trên Azure
 
 | Giờ | Kiểm tra | HTTP | SHA nhận được |
@@ -46,3 +48,15 @@ Ngày 22/11/2026. Tất cả mốc giờ dưới đây theo giờ Việt Nam (UT
 | Hạ B1 | `02d4eaef-fd18-4553-99a9-a60b833d66c0` | 21:24:45 `Succeeded` |
 
 Hai lượt chuẩn bị trước lần swap cuối lần lượt gặp HTTP 400 khi tạo slot qua ARM và URL chính vẫn trả SHA A khi dùng quy tắc Traffic Routing 100%. Mỗi lượt đều trả lại B1. Lượt cuối dùng lệnh tạo slot từ cấu hình A và swap native của App Service. Sau khi dọn, Azure trả danh sách slot `[]`, routing rules `[]` và xác nhận container `main` dùng digest A.
+
+## Schema và dữ liệu dùng chung
+
+Lượt đọc chỉ đọc `public.schema_migrations` qua Azure PostgreSQL lúc **22:51:36 ngày 23/11** xác nhận đủ **26 migration**. B có chín file bổ sung `018`–`026`, áp dụng lúc **20:43:38–20:43:39 ngày 22/11**, trước swap 21:22. Hai SHA có cùng nội dung cho 17 migration đầu. Checksum trên DB của 17 file đầu khớp khi tái tạo byte xuống dòng CRLF. Chín file sau khớp byte Git. Lượt đối chiếu chỉ đọc lịch sử đã ghi và không chạy lại migration.
+
+| Bản đang chạy trên Azure | Đọc đơn cũ | Đọc đơn tạo trên B | Minh chứng |
+| --- | --- | --- | --- |
+| B, slot riêng lúc 21:22:09 ngày 22/11 | HTTP 200 | Đơn chưa được tạo lúc này. B tạo đơn sau swap, HTTP 201 lúc 21:23:17. | B chạy trên cùng schema 26 migration trước swap. |
+| A, sau rollback lúc 21:24:26 ngày 22/11 | HTTP 200 | HTTP 200 | Cùng DB staging và SHA `12154ad`. |
+| A, kiểm lại lúc 22:50:41 ngày 23/11 | HTTP 200, request `75b54491-9745-42d2-bce8-72e1f26cd763` | HTTP 200, request `b20319af-f73a-4942-b880-a53dcac50ad0` | Cùng DB staging và SHA `12154ad`. |
+
+Các lượt đọc trên Azure xác nhận A đọc được đơn cũ và đơn do B ghi sau khi đã áp dụng cả 26 migration. Còn cần lượt `GET` trực tiếp cả hai đơn trên B và ca B không sẵn sàng, trong khung nâng S1 được duyệt riêng. [Issue CL-07 #53](https://github.com/pckienuit/AgriDispatchVN/issues/53)
