@@ -1,6 +1,6 @@
 # Minh chứng triển khai staging CL-05
 
-Cập nhật ngày **23/11/2026 (UTC+7)**. Bản bàn giao B1 ngày 21/11 chạy SHA `12154ad9000a77384c8dabecb024cf2809d02b67` trên hai Web App, database `agridispatch` có đủ 17 migration của bản đó và seed `synthetic` chạy riêng. Đã kiểm đơn còn sau restart booking và đã kiểm TLS `verify-full` từ trong VNet. Nhánh cloud lưu hồ sơ này để Duyên rà soát. Lượt kiểm PostgreSQL từ máy ngoài Azure còn chờ đường private được duyệt. [Issue #51](https://github.com/pckienuit/AgriDispatchVN/issues/51) · [Azure DevOps run #2](https://dev.azure.com/agridispatch-is402-bt05/AgriDispatchVN/_build/results?buildId=2)
+Cập nhật ngày **23/11/2026 (UTC+7)**. Bản bàn giao B1 ngày 21/11 chạy SHA `12154ad9000a77384c8dabecb024cf2809d02b67` trên hai Web App, database `agridispatch` có đủ 17 migration của bản đó và seed `synthetic` chạy riêng. Đã kiểm đơn còn sau restart booking và TLS `verify-full` từ trong VNet. Lúc **22:36:04 ngày 23/11**, máy Windows ngoài Azure kết nối PostgreSQL qua VPN Point-to-Site với `sslmode=verify-full`, kiểm được TLS 1.3. Hồ sơ trên nhánh cloud đang chờ Duyên xác nhận đã nhận. [Issue #51](https://github.com/pckienuit/AgriDispatchVN/issues/51) · [Azure DevOps run #2](https://dev.azure.com/agridispatch-is402-bt05/AgriDispatchVN/_build/results?buildId=2)
 
 ## Đối chiếu staging ngày 23/11
 
@@ -11,7 +11,7 @@ Cập nhật ngày **23/11/2026 (UTC+7)**. Bản bàn giao B1 ngày 21/11 chạy
 | Account booking đang gọi | Booking dùng IP nội bộ `http://10.42.2.240:3001` của Account trên AKS. Lượt chạy runbook CL-11 ghi Account xử lý đăng nhập HTTP `200` với SHA `25dcb2cbcdfde78bd19803cab3eed15f57f27b5a`; cùng lượt kiểm mở được đơn synthetic từ danh sách. [Minh chứng CL-11](cl-11-evidence.md) |
 | PostgreSQL | Flexible Server 17, Japan East, `Ready`; DB `agridispatch`, `UTF8`. Azure trả `require_secure_transport=on`, `publicNetworkAccess=Disabled`. Schema `account` lưu tài khoản/phiên, `dispatch` lưu dữ liệu đặt dịch vụ. `public.schema_migrations` lưu lịch sử chạy migration. [Quyền và khôi phục demo](database-deploy.md#deployment-order) |
 | Tham chiếu Key Vault ở hai Web App B1 | Vault `kv-agri-bt05a1`. Booking `DATABASE_URL` tham chiếu `BOOKING-DATABASE-URL`, Account B1 `DATABASE_URL` tham chiếu `ACCOUNT-DATABASE-URL`. Cả hai tham chiếu `INTERNAL-SERVICE-TOKEN` cho giao tiếp service. |
-| Mạng từ máy ngoài Azure | Lúc 21:45:14, Windows trả `DNS_ERROR_RCODE_NAME_ERROR` khi phân giải hostname DB. Không thấy VPN gateway, Bastion, ExpressRoute hay peering trong subscription đã kiểm. Kết quả này chưa phải lượt kết nối PostgreSQL. |
+| Mạng từ máy ngoài Azure | Trước khi tạo VPN, Windows trả `DNS_ERROR_RCODE_NAME_ERROR` lúc 21:45:14. Lượt 22:36:04 sau đó đã kết nối và kiểm TLS qua OpenVPN Point-to-Site, chi tiết ở mục 5. |
 
 Để phục hồi dữ liệu demo, dùng runner có đường private, chạy migration riêng theo SHA đích rồi chạy seed mẫu đã duyệt theo hướng dẫn bên dưới. Nếu cần khôi phục đơn đã lưu, dùng bản sao lưu PostgreSQL đã được duyệt, sau đó đối chiếu `/ready` và danh sách đơn. [Mạng private của Azure PostgreSQL](https://learn.microsoft.com/en-us/azure/postgresql/network/concepts-networking-private) · [Mốc cấu hình cloud](cloud.md)
 
@@ -147,7 +147,20 @@ Lần kiểm lại lúc **01:57:46–01:57:47** từ máy làm việc xác nhậ
 | Đăng xuất | HTTP `204` |
 
 - **PostgreSQL từ trong VNet.** Kudu booking phân giải hostname DB về `10.42.3.4`. OpenSSL kết nối cổng `5432` với `-starttls postgres`, `-verify_hostname` và `-verify_return_error`. Kết quả là `TLSv1.3`, `Verification: OK`, `Verified peername: psql-agri-bt05a1.postgres.database.azure.com`. Azure xác nhận `require_secure_transport=on` và `publicNetworkAccess=Disabled`. [TLS trên Azure PostgreSQL](https://learn.microsoft.com/en-us/azure/postgresql/security/security-tls)
-- **PostgreSQL trực tiếp từ máy ngoài Azure còn chờ đường private.** Lúc **01:57:48**, máy làm việc không phân giải được hostname DB qua DNS và chỉ có route mặc định `0.0.0.0/0` tới `10.42.3.4`. Azure không liệt kê VPN gateway, Bastion, ExpressRoute hay peering cho đường vào VNet staging trong phạm vi đã kiểm. Khi có đường private và DNS được duyệt, chạy lại `psql` với `sslmode=verify-full` ở bước 1. [Mạng private của Azure PostgreSQL](https://learn.microsoft.com/en-us/azure/postgresql/network/concepts-networking-private)
+- **Kiểm ban đầu từ máy ngoài Azure ngày 21/11.** Lúc **01:57:48**, máy làm việc không phân giải được hostname DB qua DNS và chỉ có route mặc định `0.0.0.0/0` tới `10.42.3.4`. Lượt kiểm qua VPN được thực hiện ngày 23/11 như bên dưới. [Mạng private của Azure PostgreSQL](https://learn.microsoft.com/en-us/azure/postgresql/network/concepts-networking-private)
+
+**Lượt kiểm trực tiếp từ ngoài Azure ngày 23/11/2026.** Hơn xác nhận Kiên duyệt VPN trong `rg-is402-agri`, Japan East, và mốc giữ đến hết **24/11/2026 (UTC+7)**. Quota IPv4 Standard trước khi tạo là **1/3**. Azure xác nhận `vpngw-agri-bt05` (`VpnGw1AZ`) `Succeeded` lúc 22:26:57, dùng `pip-vpngw-agri-bt05` (IPv4 Standard) và `GatewaySubnet` (`10.42.255.0/27`). Dải cấp cho Windows là `172.16.201.0/24`. Chứng chỉ client riêng của máy kiểm hết hạn lúc 00:00 ngày 25/11. Hai tài nguyên tính giờ mang mốc giữ đã duyệt. [VPN Point-to-Site dùng chứng chỉ](https://learn.microsoft.com/en-us/azure/vpn-gateway/point-to-site-certificate-gateway)
+
+Azure từ chối SSTP với `SSTPNotSupportedForVpnGateway`. Lần triển khai lại tái sử dụng subnet và IP hiện có, bật IKEv2 và OpenVPN. IKEv2 kết nối nhưng TCP `5432` timeout. Lượt qua Azure VPN Client bằng OpenVPN kết nối và chạy truy vấn thành công.
+
+| Kiểm tra từ Windows | Kết quả thực tế lúc 22:36:04 ngày 23/11 (UTC+7) |
+| --- | --- |
+| TCP đến PostgreSQL | Đích `10.42.3.4:5432`, IP nguồn trên Windows `172.16.201.2`. PostgreSQL ghi `inet_client_addr() = 172.16.201.2/32`, khớp dải VPN. |
+| TLS qua libpq 18.4 | `host=psql-agri-bt05a1.postgres.database.azure.com`, `hostaddr=10.42.3.4`, `sslmode=verify-full`, xác thực qua CA Azure công bố. |
+| Truy vấn chỉ đọc | `current_database = agridispatch`, `ssl = true`, `version = TLSv1.3`, `transaction_read_only = on`. |
+| Kiểm hostname sai | Cùng địa chỉ private từ chối kết nối do hostname không khớp chứng chỉ. |
+
+Lượt kiểm dùng vai trò `booking_runtime` từ tham chiếu Key Vault và chỉ chạy `SELECT`. `hostaddr` lấy từ bản ghi A của Private DNS zone khi kiểm. `host` giữ tên FQDN chính thức để libpq xác thực hostname. [Tham số libpq](https://www.postgresql.org/docs/17/libpq-connect.html) · [CA của Azure PostgreSQL](https://learn.microsoft.com/en-us/azure/postgresql/security/security-tls)
 
 ### 6. Kiểm một lần push tự deploy và restart
 
@@ -198,4 +211,4 @@ Kiểm local trước deploy trên Node `26.13.1` trong image test của repo. `
 ### 7. Bàn giao và chốt issue
 
 1. Gắn vào issue #51 phê duyệt CL-02 đã có và bản đọc lại credit, quota kèm ngày giờ. Phê duyệt cấu hình và ngân sách phải có trước thao tác tạo thêm tài nguyên. Nếu số liệu khác lần đọc đã duyệt, báo Kiên trước khi tiếp tục provision. [Mốc ngân sách CL-02](cloud.md)
-2. Duyên dùng phần đối chiếu staging ở đầu hồ sơ để kiểm URL, schema, release và cách phục hồi. Chốt issue sau khi có kết quả PostgreSQL từ máy ngoài Azure qua đường private được duyệt và Duyên xác nhận đã nhận hồ sơ trên nhánh cloud. Lượt push tự deploy đã có minh chứng ở CL-04. [CL-04 #50](https://github.com/pckienuit/AgriDispatchVN/issues/50)
+2. Duyên dùng phần đối chiếu staging ở đầu hồ sơ để kiểm URL, schema, release và cách phục hồi. Kết quả PostgreSQL từ máy ngoài Azure đã có ở mục 5. Chốt issue sau khi Duyên xác nhận đã nhận hồ sơ nhánh cloud. Lượt push tự deploy đã có minh chứng ở CL-04. [CL-04 #50](https://github.com/pckienuit/AgriDispatchVN/issues/50)
