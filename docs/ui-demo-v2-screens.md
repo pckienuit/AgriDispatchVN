@@ -8,6 +8,8 @@ Nguồn demo: agri-rent-demo.vercel.app (khớp commit 0ff353c). Sản phẩm: A
 | C-02 | chung |  | Chọn vai trò và hồ sơ cơ bản | FR-01, Luật 91/2025 | 2 | Có nền, mở rộng API/DB | #roles (xin vai trò) | Thiếu đồng ý dữ liệu vị trí (Luật 91/2025), đơn vị công. |
 | C-03 | chung |  | Thông báo | FR-16, FR-26 | 2 | Có API, port giao diện | #activity | Chỉ lịch sử hoạt động, không gửi Zalo/SMS. |
 | C-04 | chung |  | Không tìm thấy trang hoặc không có quyền | AC-OP-09 | 3 | Có API, port giao diện | Trang 404 hiện có | Thêm trạng thái không có quyền. |
+| C-05 | chung |  | Danh mục dịch vụ công khai | DEV-14 | 3 | Có API, port giao diện | #services | Không có trong 52 màn demo; thêm cho lối vào công khai. Đọc `GET /api/services`. |
+| C-06 | chung |  | Chi tiết dịch vụ công khai | DEV-14 | 3 | Có API, port giao diện | #services/:id | Không có trong 52 màn demo. Khách bấm đặt thì sang C-01 rồi quay lại đây. |
 | F-01 | nong-dan | Có | Trang chính | FR-21 | 6 | Có nền, mở rộng API/DB | Không có | Cần API tổng hợp đơn đang chạy và việc cần làm. |
 | F-02 | nong-dan | Có | Danh sách thửa ruộng | MOD-01 | 2 | Có API, port giao diện | #fields | Thửa hiện chỉ có tên, địa phương, m². |
 | F-03 | nong-dan | Có | Thêm thửa | FR-05, FR-06, FR-07 | 6 | Có nền, mở rộng API/DB | #fields (form m²) | Cần lưu ranh thửa, kiểm tự cắt/chồng lấn, nhập nhanh, nhờ HTX vẽ. |

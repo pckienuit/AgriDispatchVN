@@ -108,6 +108,7 @@ function login(ctx) {
         ui.button({ label: 'Đăng ký tài khoản mới', kind: 'ghost', block: true, href: url('chung', 'C-01', { buoc: 'dang-ky', tiep: ctx.params.tiep }) }),
         h('span', { class: 'small muted' }, 'Quên mật khẩu? Bản thử nghiệm chưa có chức năng đặt lại mật khẩu.'),
         ui.banner({ tone: 'info', text: 'Quản trị viên dùng tài khoản nội bộ do nền tảng cấp, đăng nhập tại đây.' })),
+    ui.button({ label: 'Xem danh mục dịch vụ', kind: 'ghost', block: true, href: url('chung', 'C-05') }),
     h('p', { class: 'small muted' }, 'AgriDispatch VN. Dữ liệu mẫu minh họa. Bản thử nghiệm chưa gửi mã OTP; mật khẩu chỉ gửi tới máy chủ của hệ thống.'));
 }
 

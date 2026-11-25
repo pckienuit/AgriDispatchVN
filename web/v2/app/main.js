@@ -12,7 +12,7 @@ const h = ui.h;
 const mount = doc.getElementById('app');
 
 const built = new Set(registry.keys());
-const PUBLIC = new Set(['C-01', 'C-04']);
+const PUBLIC = new Set(['C-01', 'C-04', 'C-05', 'C-06']);
 
 const session = { token: null, user: null, expiresAt: null, timer: null };
 const api = createApiClient({

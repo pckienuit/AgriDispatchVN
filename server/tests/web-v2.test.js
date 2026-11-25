@@ -68,10 +68,10 @@ test('nav hides screens that are not built and marks child screens current', () 
   for (const role of ROLES) for (const [, , code] of NAV[role.slug]) assert.ok(codeAllowedInRole(code, role.slug), `${role.slug} ${code}`);
 });
 
-test('router registry includes all 52 reference screens with titles and renderers', async () => {
+test('router registry includes all 54 reference screens (52 demo plus public C-05, C-06) with titles and renderers', async () => {
   const inventory = await readFile(new URL('../../docs/ui-demo-v2-screens.md', import.meta.url), 'utf8');
   const expected = [...inventory.matchAll(/^\| ([CFPOHA]-\d{2}) \|/gm)].map((match) => match[1]);
-  assert.equal(expected.length, 52, '52 reference screens');
+  assert.equal(expected.length, 54, '52 demo screens plus public C-05, C-06');
   assert.deepEqual([...registry.keys()].sort(), expected.sort());
   for (const [code, screen] of registry) {
     assert.equal(screen.code, code);
