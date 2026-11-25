@@ -47,6 +47,8 @@ code, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .msg--banner[hidden] { display: none; }
 .msg--banner::before { content: "\e4e0"; content: "\e4e0" / ""; font-family: "Phosphor"; font-size: 1.4em; line-height: 1; flex: none; }
 .msg--banner:focus-visible { outline: none; box-shadow: none; }
+/* Vùng nội dung và tiêu đề chỉ nhận tiêu điểm bằng mã khi đổi màn; vòng tiêu điểm chung sẽ bao cả trang và tràn lên thanh tiêu đề. */
+main[tabindex="-1"]:focus-visible, h1[tabindex="-1"]:focus-visible { outline: none; box-shadow: none; }
 .msg--ok { background: var(--fb-success-bg); color: var(--fb-success-ink); }
 .msg--info { background: var(--fb-info-bg); color: var(--fb-info-ink); }
 
