@@ -527,7 +527,7 @@ try {
 
   // Shared account link keeps the HTX role; a persisted dispute event opens the right case in H-08.
   await browser.hash('#/chung/C-02');
-  await browser.waitText('Vai trò đang có');
+  await browser.waitText('Vai trò làm việc');
   await browser.clickText('Hoạt động gần đây', 'a');
   await browser.waitText('Tranh chấp đã đóng sau khi hai bên đồng ý');
   assert.equal(await browser.ev('location.hash'), '#/htx/C-03', 'Shared account activity must retain the HTX role');

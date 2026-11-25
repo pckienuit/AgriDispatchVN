@@ -11,6 +11,7 @@
   --ink-2: #3B4D41;
   --ink-inverse: #FFFFFF;
   --ink-inverse-2: #E2E8F0;
+  --ink-hover: #0F2417;
   --line: rgba(25, 55, 34, .16);
   --line-strong: rgba(15, 23, 42, .32);
   --line-ctl: rgba(25, 55, 34, .6);
@@ -134,6 +135,7 @@
   --ink-2: #A9B8B0;
   --ink-inverse: #0F172A;
   --ink-inverse-2: #334155;
+  --ink-hover: #FFFFFF;
   --line: rgba(241, 245, 242, .14);
   --line-strong: rgba(241, 245, 242, .28);
   --line-ctl: #6E8277;
@@ -198,6 +200,7 @@
     --ink-2: #A9B8B0;
     --ink-inverse: #0F172A;
     --ink-inverse-2: #334155;
+    --ink-hover: #FFFFFF;
     --line: rgba(241, 245, 242, .14);
     --line-strong: rgba(241, 245, 242, .28);
     --line-ctl: #6E8277;

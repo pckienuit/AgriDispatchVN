@@ -25,8 +25,18 @@ export function safeNext(value, built) {
   return url(route.role.slug, route.code, route.params);
 }
 
+// Password box with the Hiện/Ẩn toggle from the Figma C-01. Returns { input, row }; the label must point at input.id.
 function passwordInput(autocomplete) {
-  return ui.input({ type: 'password', name: 'password', autocomplete, maxlength: 128 });
+  const input = ui.input({ type: 'password', name: 'password', autocomplete, maxlength: 128, placeholder: 'Nhập mật khẩu' });
+  input.id = 'login-password';
+  const toggle = h('button', { class: 'btn btn--ghost', type: 'button', 'aria-controls': 'login-password', 'aria-label': 'Hiện mật khẩu' }, 'Hiện');
+  toggle.addEventListener('click', () => {
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    toggle.textContent = show ? 'Ẩn' : 'Hiện';
+    toggle.setAttribute('aria-label', show ? 'Ẩn mật khẩu' : 'Hiện mật khẩu');
+  });
+  return { input, row: h('div', { class: 'row row--nowrap' }, input, toggle) };
 }
 
 /* ---------- C-01 ---------- */
@@ -38,32 +48,40 @@ function login(ctx) {
       ui.banner({ tone: 'success', title: 'Bạn đang đăng nhập', text: `Tài khoản ${ctx.user.name}.` }),
       ui.button({ label: 'Về trang chính', kind: 'primary', size: 'lg', block: true, href: next || ctx.session.homeHash() }));
   }
-  const phone = ui.input({ type: register ? 'tel' : 'text', inputmode: register ? 'tel' : null, name: 'phone', autocomplete: register ? 'tel' : 'username', maxlength: 254 });
+  const phone = ui.input({ type: register ? 'tel' : 'text', inputmode: register ? 'tel' : null, name: 'phone', autocomplete: register ? 'tel' : 'username', maxlength: 254, placeholder: 'Ví dụ: 0901 234 567' });
   const name = ui.input({ name: 'name', autocomplete: 'name', maxlength: 120 });
   const password = passwordInput(register ? 'new-password' : 'current-password');
+  const passwordField = ui.field({ id: 'login-password', noId: true, label: 'Mật khẩu', hint: register ? 'Ít nhất 12 ký tự.' : null, input: password.row, required: true });
   const fields = [
-    h('p', null, register ? 'Tạo tài khoản bằng số điện thoại. Tài khoản mới có vai trò nông dân; vai trò khác xin thêm sau khi đăng nhập.' : 'Đăng nhập bằng số điện thoại và mật khẩu.'),
-    ui.field({ label: 'Số điện thoại', hint: register ? 'Ví dụ 0901 234 567' : 'Ví dụ 0901 234 567. Tài khoản cũ tạo bằng email thì nhập email.', input: phone, required: true }),
+    ui.field({ label: 'Số điện thoại', hint: register ? null : 'Tài khoản cũ tạo bằng email thì nhập email.', input: phone, required: true }),
     register ? ui.field({ label: 'Họ và tên', input: name, required: true }) : null,
-    ui.field({ label: 'Mật khẩu', hint: register ? 'Ít nhất 12 ký tự.' : null, input: password, required: true }),
+    passwordField,
   ];
   const form = apiForm({
     fields,
     submitLabel: register ? 'Tạo tài khoản' : 'Đăng nhập',
     async run(data) {
-      const phoneValue = String(data.get('phone') || '').trim();
-      const pass = String(data.get('password') || '');
-      if (!phoneValue) throw new Error('Nhập số điện thoại.');
-      if (register) {
-        const nameValue = String(data.get('name') || '').trim();
-        if (!nameValue) throw new Error('Nhập họ và tên.');
-        if ([...pass].length < 12) throw new Error('Mật khẩu cần ít nhất 12 ký tự.');
-        await ctx.api.request('POST', '/api/auth/register', { body: { phone: phoneValue, password: pass, name: nameValue } });
-      } else if (!pass) throw new Error('Nhập mật khẩu.');
-      // Accounts created before phone sign-in still use their email as the identifier.
-      const id = !register && phoneValue.includes('@') ? { email: phoneValue } : { phone: phoneValue };
-      const { data: sessionData } = await ctx.api.request('POST', '/api/auth/login', { body: { ...id, password: pass } });
-      return sessionData;
+      try {
+        const phoneValue = String(data.get('phone') || '').trim();
+        const pass = String(data.get('password') || '');
+        if (!phoneValue) throw new Error('Nhập số điện thoại.');
+        if (register) {
+          const nameValue = String(data.get('name') || '').trim();
+          if (!nameValue) throw new Error('Nhập họ và tên.');
+          if ([...pass].length < 12) throw new Error('Mật khẩu cần ít nhất 12 ký tự.');
+          await ctx.api.request('POST', '/api/auth/register', { body: { phone: phoneValue, password: pass, name: nameValue } });
+        } else if (!pass) throw new Error('Nhập mật khẩu.');
+        // Accounts created before phone sign-in still use their email as the identifier.
+        const id = !register && phoneValue.includes('@') ? { email: phoneValue } : { phone: phoneValue };
+        const { data: sessionData } = await ctx.api.request('POST', '/api/auth/login', { body: { ...id, password: pass } });
+        return sessionData;
+      } catch (error) {
+        // Figma C-01 failed state: red password field and a retry label on the button.
+        passwordField.classList.add('field--invalid');
+        password.input.setAttribute('aria-invalid', 'true');
+        if (!register) form.querySelector('button[type=submit]').textContent = 'Đăng nhập lại';
+        throw error;
+      }
     },
     onDone(sessionData) {
       ctx.session.signIn(sessionData);
@@ -71,13 +89,26 @@ function login(ctx) {
       ctx.go(next || ctx.session.homeHash());
     },
   });
+  // Figma C-01 failed state puts the error banner at the top of the form, not under the button.
+  const errorBox = form.querySelector('.msg--error');
+  errorBox.classList.add('msg--banner');
+  form.prepend(errorBox);
   return h('div', { class: 'stack' },
     h('p', { class: 'row row--nowrap' }, ui.icon('plant'), h('strong', null, 'AgriDispatch VN'), h('span', { class: 'muted small' }, 'Điều phối máy gặt ĐBSCL')),
-    form,
-    h('p', { class: 'small muted' }, 'Bản thử nghiệm chưa gửi mã OTP qua tin nhắn. Mật khẩu chỉ gửi tới máy chủ của hệ thống.'),
+    h('p', { class: 'muted' }, 'Dùng số điện thoại và mật khẩu đã đăng ký để vào đúng bàn làm việc theo vai trò của bạn.'),
+    ui.card({
+      title: register ? 'Tạo tài khoản' : 'Đăng nhập',
+      subtitle: register ? 'Tài khoản mới có vai trò nông dân; vai trò khác xin thêm sau khi đăng nhập.' : 'Đăng nhập bằng số điện thoại và mật khẩu.',
+      body: form,
+    }),
     register
-      ? ui.button({ label: 'Đã có tài khoản? Đăng nhập', kind: 'ghost', block: true, href: url('chung', 'C-01', { tiep: ctx.params.tiep }) })
-      : ui.button({ label: 'Chưa có tài khoản? Tạo tài khoản', kind: 'ghost', block: true, href: url('chung', 'C-01', { buoc: 'dang-ky', tiep: ctx.params.tiep }) }));
+      ? h('div', { class: 'stack-sm' }, h('span', null, 'Đã có tài khoản?'), ui.button({ label: 'Đăng nhập', kind: 'ghost', block: true, href: url('chung', 'C-01', { tiep: ctx.params.tiep }) }))
+      : h('div', { class: 'stack-sm' },
+        h('span', null, 'Chưa có tài khoản?'),
+        ui.button({ label: 'Đăng ký tài khoản mới', kind: 'ghost', block: true, href: url('chung', 'C-01', { buoc: 'dang-ky', tiep: ctx.params.tiep }) }),
+        h('span', { class: 'small muted' }, 'Quên mật khẩu? Bản thử nghiệm chưa có chức năng đặt lại mật khẩu.'),
+        ui.banner({ tone: 'info', text: 'Quản trị viên dùng tài khoản nội bộ do nền tảng cấp, đăng nhập tại đây.' })),
+    h('p', { class: 'small muted' }, 'AgriDispatch VN. Dữ liệu mẫu minh họa. Bản thử nghiệm chưa gửi mã OTP; mật khẩu chỉ gửi tới máy chủ của hệ thống.'));
 }
 
 /* ---------- C-02 ---------- */
@@ -108,12 +139,13 @@ async function account(ctx) {
   }));
 
   return h('div', { class: 'stack' },
+    h('p', { class: 'muted' }, 'Mỗi tài khoản có thể giữ nhiều vai trò. Chọn bàn làm việc bạn muốn mở ngay bây giờ hoặc gửi yêu cầu kích hoạt thêm vai trò.'),
     ui.card({ title: 'Tài khoản', body: ui.kv([
       ['Họ và tên', user.name],
       user.phone ? ['Số điện thoại', user.phone] : null,
       user.email ? ['Email', user.email] : null,
     ]) }),
-    ui.card({ title: 'Vai trò đang có', subtitle: 'Chọn vai trò để mở màn làm việc tương ứng.', body: ui.list(roles.map((r) => ui.listItem({ title: ROLE_INFO[r.apiRole].name, meta: ROLE_INFO[r.apiRole].desc, href: roleHome(r.slug), icon: ROLE_ICON[r.apiRole] }))) }),
+    ui.card({ title: 'Vai trò làm việc', subtitle: 'Chọn 1 vai trò để vào màn hình chính tương ứng.', body: ui.list(roles.map((r) => ui.listItem({ title: ROLE_INFO[r.apiRole].name, meta: ROLE_INFO[r.apiRole].desc, href: roleHome(r.slug), icon: ROLE_ICON[r.apiRole], right: ui.badge('Đã có quyền', 'ok') }))) }),
     ui.card({ title: 'Xin thêm vai trò', subtitle: 'Quản trị nền tảng duyệt từng yêu cầu. Chưa có bước kiểm giấy tờ.', body: canRequest.length
       ? h('div', { class: 'stack-sm' },
         ui.choices({ name: 'role', label: 'Vai trò muốn xin', value: picked, options: canRequest.map((r) => ({ value: r, label: ROLE_INFO[r].name, desc: ROLE_INFO[r].desc })), onChange(v) { picked = v; } }),

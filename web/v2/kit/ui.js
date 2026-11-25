@@ -247,7 +247,7 @@ const doc = root.document;
       o.hint ? h('div', { class: 'field__hint' }, o.hint) : null, input,
       o.error ? h('div', { class: 'field__error', role: 'alert' }, o.error) : null);
   };
-  ui.input = function (o) { o = o || {}; return h('input', { class: 'input' + (o.mono ? ' input--mono' : ''), type: o.type || 'text', name: o.name, value: o.value, inputmode: o.inputmode, autocomplete: o.autocomplete || 'off', maxlength: o.maxlength, min: o.min, max: o.max, step: o.step, readOnly: o.readOnly, disabled: o.disabled, on: o.on }); };
+  ui.input = function (o) { o = o || {}; return h('input', { class: 'input' + (o.mono ? ' input--mono' : ''), type: o.type || 'text', name: o.name, value: o.value, placeholder: o.placeholder, inputmode: o.inputmode, autocomplete: o.autocomplete || 'off', maxlength: o.maxlength, min: o.min, max: o.max, step: o.step, readOnly: o.readOnly, disabled: o.disabled, on: o.on }); };
   ui.select = function (o) {
     var s = h('select', { class: 'select', name: o.name, disabled: o.disabled, on: o.on });
     (o.options || []).forEach(function (op) { var v = Array.isArray(op) ? op[0] : op, l = Array.isArray(op) ? op[1] : op; s.appendChild(h('option', { value: v, selected: String(v) === String(o.value) }, l)); });

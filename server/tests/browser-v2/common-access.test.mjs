@@ -20,6 +20,7 @@ const WRONG_PASSWORD = 'WrongPass!99999';
 const PHONE = '0914000001';
 const NAME = 'Thử nông dân C-01';
 const WRONG_MSG = 'Số điện thoại hoặc mật khẩu không đúng.';
+const EXPIRED_MSG = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
 const DENIED_TITLE = 'Tài khoản chưa có quyền xem nội dung này';
 const NOT_FOUND_TITLE = 'Không tìm thấy trang này';
 const db = await createDisposableDatabase(process.env.TEST_DATABASE_URL);
@@ -107,10 +108,12 @@ async function runFlow(width) {
   assert.match(resume, /tiep=%2Fnong-dan%2FF-02$/, `${tag} resume target lost: ${resume}`);
   await b.waitFor('!!document.querySelector("input[name=phone]")');
 
-  // Keyboard path: phone -> password -> submit, reached with real Tab key events.
+  // Keyboard path: phone -> password -> Hiện toggle -> submit, reached with real Tab key events.
   await b.ev("document.querySelector('input[name=phone]').focus()");
   await pressKey('Tab', 'Tab', 9);
   assert.equal(await b.ev("document.activeElement.name"), 'password', `${tag} Tab from phone should reach password`);
+  await pressKey('Tab', 'Tab', 9);
+  assert.equal(await b.ev("document.activeElement.textContent"), 'Hiện', `${tag} Tab from password should reach the show-password toggle`);
   await pressKey('Tab', 'Tab', 9);
   assert.equal(await b.ev("document.activeElement.getAttribute('type')"), 'submit', `${tag} Tab from password should reach submit`);
 
@@ -173,7 +176,19 @@ async function runFlow(width) {
   await b.waitText('Tài khoản');
   assert.equal(await b.ev("document.body.innerText.includes('Thử nông dân C-01')"), true, `${tag} C-02 missing user name`);
 
-  results.push({ check: 'screenshots', width: tag, files: [shotWrong, shotResumed, shotDenied, shotUnknown] });
+  // Session lost: the server revokes the session, the next protected call gets 401, and the app returns to C-01
+  // with a clear message instead of showing stale signed-in content.
+  const revoked = await pool.query('UPDATE account.sessions SET revoked_at = now() WHERE revoked_at IS NULL');
+  assert.ok(revoked.rowCount >= 1, `${tag} no live session to revoke`);
+  await b.hash('#/nong-dan/F-02');
+  await b.waitFor("location.hash.startsWith('#/chung/C-01')");
+  await b.waitText(EXPIRED_MSG);
+  assert.equal(await b.ev("!!document.querySelector('input[name=password]')"), true, `${tag} expired session did not show the sign-in form`);
+  assert.equal(await b.ev("document.body.innerText.includes('Đăng xuất')"), false, `${tag} expired session still looks signed in`);
+  await layoutOk(`c01-session-expired-${tag}`);
+  const shotExpired = await shot(`c01-session-expired-${width}`);
+
+  results.push({ check: 'screenshots', width: tag, files: [shotWrong, shotResumed, shotDenied, shotUnknown, shotExpired] });
   log(`PASS ${tag}`, { hashes: [resume] });
 }
 
@@ -191,11 +206,14 @@ try {
   pageErrors.push(...browser.errors);
   consoleErrors.push(...browser.consoleErrors);
   assert.deepEqual(pageErrors, [], `uncaught page errors: ${pageErrors.join(' | ')}`);
-  // Only the deliberate wrong-password attempt (one per width) may log a 401, and only from the login endpoint.
+  // Only two deliberate 401s per width may be logged: the wrong-password login, and the call made after the session was revoked.
   const loginFailures = consoleErrors.filter((e) => /status of 401 \(Unauthorized\) \S*\/api\/auth\/login$/.test(e));
-  assert.equal(loginFailures.length, consoleErrors.length, `unexpected console errors: ${consoleErrors.join(' | ')}`);
+  const expiredCalls = consoleErrors.filter((e) => /status of 401 \(Unauthorized\) \S*\/api\/(?!auth\/login)\S+$/.test(e));
+  assert.equal(loginFailures.length + expiredCalls.length, consoleErrors.length, `unexpected console errors: ${consoleErrors.join(' | ')}`);
   assert.equal(loginFailures.length, 2, `expected one login 401 per width, got ${loginFailures.length}`);
-  log('expected console errors (wrong-password 401 per width)', loginFailures.length);
+  // F-02 loads fields and services in parallel, so one revoked session can log more than one 401 per width.
+  assert.ok(expiredCalls.length >= 2, `expected a revoked-session 401 at both widths, got ${expiredCalls.length}`);
+  log('expected console errors (wrong-password and revoked-session 401 per width)', consoleErrors.length);
   log('PASS common access C-01/C-04', { shots: SHOTS, results: results.length });
 } finally {
   try {

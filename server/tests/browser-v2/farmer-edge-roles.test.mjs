@@ -192,7 +192,7 @@ async function runAt(width) {
   await browser.waitText('Lịch sử yêu cầu vai trò');
   await check(`${w} C-02 refresh after approval: coop role listed, Đã duyệt, no PENDING badge`, async () => {
     const text = await mainText();
-    assert.ok(text.includes(ROLE_COOP_DESC), 'coop role not in Vai trò đang có');
+    assert.ok(text.includes(ROLE_COOP_DESC), 'coop role not in Vai trò làm việc');
     assert.ok((await badgeTexts()).includes('Đã duyệt'), 'Đã duyệt badge missing');
     assert.ok(!(await badgeTexts()).includes('Chờ duyệt'), 'stale PENDING badge');
     assert.ok(!(await roleRadioValues()).includes('coop'), 'approved role still offered');

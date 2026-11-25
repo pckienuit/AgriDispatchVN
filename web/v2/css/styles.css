@@ -25,8 +25,9 @@ code, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2); min-height: var(--ctl-h); padding: 0 20px; border-radius: var(--r-ctl); border: 1px solid transparent; font: 600 var(--fs)/1.2 var(--font); cursor: pointer; text-decoration: none; transition: background .12s, transform .12s, border-color .12s; white-space: nowrap; }
 .btn:active { transform: scale(.98); }
 .btn:disabled, .btn[aria-disabled=true] { opacity: .5; cursor: not-allowed; transform: none; }
-.btn--primary { background: var(--accent); color: var(--accent-ink); }
-.btn--primary:hover:not(:disabled) { background: var(--accent-hover); }
+/* Figma tokens: the primary CTA is ink (dark forest green); accent stays for brand marks and progress. */
+.btn--primary { background: var(--ink); color: var(--ink-inverse); }
+.btn--primary:hover:not(:disabled) { background: var(--ink-hover); }
 .btn--secondary { background: var(--surface); color: var(--ink); border-color: var(--line-ctl); }
 .btn--secondary:hover:not(:disabled) { background: var(--surface-2); }
 .btn--ghost { background: transparent; color: var(--ink); }
@@ -41,6 +42,11 @@ code, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .action--block { width: 100%; }
 .msg { font-size: var(--fs-sm); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-ctl); max-width: 65ch; }
 .msg--error { background: var(--fb-danger-bg); color: var(--fb-danger-ink); }
+/* Banner look from Figma C-01: warning icon, soft red border, no focus ring (the box takes programmatic focus so screen readers announce it). */
+.msg--banner { display: flex; align-items: flex-start; gap: var(--sp-3); max-width: none; padding: var(--sp-3) var(--sp-4); border: 1px solid color-mix(in srgb, var(--fb-danger-ink) 40%, transparent); }
+.msg--banner[hidden] { display: none; }
+.msg--banner::before { content: "\e4e0"; content: "\e4e0" / ""; font-family: "Phosphor"; font-size: 1.4em; line-height: 1; flex: none; }
+.msg--banner:focus-visible { outline: none; box-shadow: none; }
 .msg--ok { background: var(--fb-success-bg); color: var(--fb-success-ink); }
 .msg--info { background: var(--fb-info-bg); color: var(--fb-info-ink); }
 
