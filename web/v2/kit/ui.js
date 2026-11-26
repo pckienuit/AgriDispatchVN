@@ -599,6 +599,12 @@ const doc = root.document;
     return { close: close, el: sh };
   };
 
+  // Gọi khi một lỗi hiện ngay trên màn, để thông báo thành công của bước trước không nằm cạnh lỗi.
+  ui.clearToasts = function () {
+    var box = doc.getElementById('toasts');
+    if (box) while (box.firstChild) box.removeChild(box.firstChild);
+  };
+
   ui.toast = function (text, kind) {
     var box = doc.getElementById('toasts');
     if (!box) {

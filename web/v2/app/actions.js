@@ -34,6 +34,7 @@ export function apiButton(o) {
       if (o.okText) ui.toast(o.okText, 'ok');
       if (o.onDone) await o.onDone(result);
     } catch (error) {
+      ui.clearToasts();
       msg.textContent = errorText(error);
       msg.hidden = false;
       msg.focus?.();
@@ -68,6 +69,7 @@ export function apiForm({ fields, submitLabel, run, onDone, className = 'stack',
       const result = await run(new globalThis.FormData(form));
       if (onDone) await onDone(result);
     } catch (error) {
+      ui.clearToasts();
       msg.textContent = error instanceof ApiError ? errorText(error) : String(error?.message || error);
       msg.hidden = false;
       msg.focus?.();

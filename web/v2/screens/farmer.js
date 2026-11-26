@@ -1189,6 +1189,7 @@ async function quoteConfirmScreen(ctx) {
       const definitive = error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 401;
       if (definitive) bookingTracker.clear();
       else bookingTracker.mark(true);
+      ui.clearToasts();
       feedbackBox.append(ui.note({ tone: 'error', text: errorText(error) }));
       if (!definitive) {
         feedbackBox.append(ui.note({
