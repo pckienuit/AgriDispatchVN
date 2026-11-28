@@ -38,6 +38,60 @@ nav.addEventListener('click', (event) => {
 });
 
 const motion = matchMedia('(prefers-reduced-motion: no-preference)');
+// Match the sketch's two overlapping, eased intervals and its frame-based scroll scrub.
+const hero = document.querySelector('[data-hero]');
+const inner = hero.querySelector('.hero__inner');
+const media = hero.querySelector('.hero__media');
+const hint = hero.querySelector('.hero__hint');
+const mask = hero.querySelector('.hero__tw');
+const white = hero.querySelector('.hero__t--w');
+const narrow = matchMedia('(max-width: 900px)');
+const clamp = (n) => Math.min(1, Math.max(0, n));
+const segment = (p, start, end) => 1 - (1 - clamp((p - start) / (end - start))) ** 2;
+const progress = () => clamp(-hero.getBoundingClientRect().top / Math.max(1, hero.offsetHeight - window.innerHeight));
+let current = 0;
+let frame = 0;
+
+function renderHero(p) {
+  const w = inner.clientWidth;
+  const h = inner.clientHeight;
+  const shrink = narrow.matches ? 0 : segment(p, .585, 1);
+  const width = w + (w * .3128 - w) * shrink;
+  const height = h * segment(p, .037, .678);
+  const radius = 12 + 52 * shrink;
+  media.style.width = `${width}px`;
+  media.style.height = `${height}px`;
+  media.style.borderRadius = `${radius}px`;
+  mask.style.clipPath = `inset(${h - height}px 0 0 ${w - width}px round ${radius}px)`;
+  white.style.transform = `translateX(${-0.0746 * w * shrink}px)`;
+  const opacity = clamp(1 - p / .16);
+  hint.style.opacity = opacity;
+  hint.inert = opacity < .3;
+}
+
+function tick() {
+  const target = progress();
+  current += (target - current) * .14;
+  if (Math.abs(target - current) < .0004) current = target;
+  renderHero(current);
+  frame = current === target ? 0 : window.requestAnimationFrame(tick);
+}
+
+function syncHero() {
+  window.cancelAnimationFrame(frame);
+  frame = 0;
+  hero.classList.toggle('hero--static', !motion.matches);
+  current = motion.matches ? progress() : 1;
+  renderHero(current);
+}
+
+window.addEventListener('scroll', () => {
+  if (motion.matches && !frame) frame = window.requestAnimationFrame(tick);
+}, { passive: true });
+window.addEventListener('resize', syncHero);
+motion.addEventListener('change', syncHero);
+syncHero();
+
 let observer;
 function syncReveals() {
   observer?.disconnect();

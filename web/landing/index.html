@@ -21,23 +21,28 @@
       <nav id="site-nav" aria-label="Điều hướng chính">
         <a href="#dich-vu">Dịch vụ</a>
         <a href="#quy-trinh">Tìm hiểu</a>
-        <a class="button button-soft" href="#lien-he">Liên hệ</a>
-        <a class="button" href="/v2/#/chung/C-01">Đăng nhập</a>
+        <a class="button btn-dot button-soft" href="#lien-he"><span class="t">Liên hệ</span></a>
+        <a class="button btn-dot" href="/v2/#/chung/C-01"><span class="t">Đăng nhập</span></a>
       </nav>
     </div>
   </header>
 
   <main id="noi-dung" tabindex="-1">
-    <section class="hero" aria-labelledby="hero-title">
-      <h1 id="hero-title" class="hero-entrance"><span>Gặt đúng vụ,</span> <span>giá rõ từng ha</span></h1>
-      <div class="hero-intro">
-        <p class="hero-entrance">Hợp tác xã gom nhu cầu cùng ngày gặt. Chủ máy xem cụm ruộng trước khi nhận, hai bên xác nhận công việc.</p>
-        <a class="button hero-entrance" href="/v2/#/chung/C-05">Xem dịch vụ</a>
+    <section class="hero" data-hero aria-labelledby="hero-title">
+      <div class="hero__stage">
+        <div class="hero__inner">
+          <div class="hero__hint">
+            <p>Hợp tác xã gom nhu cầu cùng ngày gặt. Chủ máy xem cụm ruộng trước khi nhận, hai bên xác nhận công việc.</p>
+            <a class="button btn-dot" href="/v2/#/chung/C-05"><span class="t">Xem dịch vụ</span></a>
+          </div>
+          <h1 id="hero-title" class="hero__t">Gặt đúng vụ,<br>giá rõ từng ha</h1>
+          <picture class="hero__media">
+            <source media="(max-width: 900px)" srcset="img/hero-mobile.webp" width="370" height="635">
+            <img src="img/hero-wide.webp" width="1600" height="1200" fetchpriority="high" alt="Cánh đồng dưới chân núi ở Cô Tô, Tri Tôn, An Giang">
+          </picture>
+          <div class="hero__tw" aria-hidden="true"><p class="hero__t hero__t--w">Gặt đúng vụ,<br>giá rõ từng ha</p></div>
+        </div>
       </div>
-      <picture class="hero-media hero-entrance">
-        <source media="(max-width: 767px)" srcset="img/hero-mobile.webp" width="370" height="635">
-        <img src="img/hero.webp" width="432" height="680" fetchpriority="high" alt="Cánh đồng dưới chân núi ở Cô Tô, Tri Tôn, An Giang">
-      </picture>
     </section>
 
     <section class="wrap introduction" aria-labelledby="intro-title">
@@ -53,7 +58,7 @@
           <div><dt>Đơn giá</dt><dd>Theo ha</dd></div>
           <div><dt>Nguồn giá</dt><dd>Ghi trên từng dịch vụ</dd></div>
         </dl>
-        <a class="button button-pill" href="/v2/#/chung/C-05">Xem dịch vụ</a>
+        <a class="button btn-dot button-pill" href="/v2/#/chung/C-05"><span class="t">Xem dịch vụ</span></a>
       </div>
     </section>
 
@@ -72,7 +77,7 @@
       <div class="catalog" aria-busy="false">
         <ul id="service-list" class="service-list"></ul>
         <div class="skeleton" aria-hidden="true" hidden><span></span><span></span><span></span></div>
-        <button class="button button-soft retry" type="button" hidden>Thử lại</button>
+        <button class="button btn-dot button-soft retry" type="button" hidden><span class="t">Thử lại</span></button>
       </div>
       <a class="catalog-link" href="/v2/#/chung/C-05">Xem toàn bộ danh mục <i class="ph ph-arrow-right" aria-hidden="true"></i></a>
     </section>
@@ -90,7 +95,7 @@
             <li><i class="ph ph-check" aria-hidden="true"></i> Đường vào ruộng và điểm hạ máy</li>
             <li><i class="ph ph-check" aria-hidden="true"></i> Lịch dự kiến để sắp xếp máy và thợ</li>
           </ul>
-          <a class="button button-soft" href="/v2/#/chung/C-01?buoc=dang-ky">Tạo tài khoản</a>
+          <a class="button btn-dot button-soft" href="/v2/#/chung/C-01?buoc=dang-ky"><span class="t">Tạo tài khoản</span></a>
         </div>
       </div>
     </section>
@@ -110,7 +115,7 @@
         <h2 id="payment-title">Nền tảng không giữ tiền</h2>
         <p>Nếu có tiền cọc, hai bên chuyển trực tiếp. Hệ thống chỉ ghi nhận thông tin do hai bên xác nhận, không xử lý khoản chuyển tiền.</p>
         <p>Trước khi xác nhận, hãy đối chiếu đơn giá và hỏi HTX về các khoản phụ phí nếu có.</p>
-        <a class="button" href="/v2/#/chung/C-01">Đăng nhập</a>
+        <a class="button btn-dot" href="/v2/#/chung/C-01"><span class="t">Đăng nhập</span></a>
       </div>
     </section>
   </main>
