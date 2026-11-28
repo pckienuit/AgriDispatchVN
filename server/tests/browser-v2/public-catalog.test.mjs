@@ -94,6 +94,8 @@ async function runFlow(width, { empty }) {
   await b.click('form button[type=submit]');
   await b.waitFor(`location.hash === ${JSON.stringify(detailHash)}`);
   await b.waitText('Đặt dịch vụ này');
+  assert.deepEqual(await b.ev("[...document.querySelectorAll('.mbar a, #main a[href=\"#/chung/C-05\"]')].map(a => [a.getAttribute('href'), a.getAttribute('aria-label')])"),
+    [['#/chung/C-05', 'Quay lại danh mục dịch vụ']], `${tag} detail should have one back link, to the catalog`);
   await layoutOk(`c06-signed-in-${tag}`);
   await b.shot(join(SHOTS, `c06-signed-in-${width}.png`));
 
@@ -132,9 +134,12 @@ try {
   await browser.waitFor("!!document.querySelector('a.item')");
   await new Promise((resolve) => { booking.server.close(resolve); booking.server.closeAllConnections(); });
   await browser.hash('#/chung/C-04');
+  await browser.ev("import('/v2/kit/ui.js').then(({ ui }) => ui.toast('Đã lưu thay đổi', 'ok'))");
+  assert.equal(await browser.ev("!!document.getElementById('toasts')?.childElementCount"), true);
   await browser.hash('#/chung/C-05');
   await browser.waitText('Chưa tải được màn này');
   assert.equal(await browser.ev("document.body.innerText.includes('Thử lại')"), true, 'error state has no retry');
+  assert.equal(await browser.ev("document.getElementById('toasts')?.childElementCount ?? 0"), 0, 'stale success toast survived offline error');
   await browser.shot(join(SHOTS, 'c05-api-error-390.png'));
 
   pageErrors.push(...browser.errors);

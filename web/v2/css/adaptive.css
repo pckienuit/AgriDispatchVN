@@ -183,7 +183,7 @@
 .sheet-scrim {
   position: fixed;
   inset: 0;
-  background: var(--scrim, rgba(15, 23, 42, .5));
+  background: var(--scrim);
   z-index: var(--z-modal, 100);
   display: flex;
   align-items: flex-end;
@@ -695,13 +695,6 @@
 .skeleton--w50 {
   height: 20px;
   width: 50%;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation: none !important;
-    transition: none !important;
-  }
 }
 
 /* 11. Chỉnh thành phần cũ trên màn hẹp */

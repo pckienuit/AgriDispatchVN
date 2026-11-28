@@ -108,6 +108,39 @@ async function runFlow(width) {
   assert.match(resume, /tiep=%2Fnong-dan%2FF-02$/, `${tag} resume target lost: ${resume}`);
   await b.waitFor('!!document.querySelector("input[name=phone]")');
 
+  const invalid = () => b.ev("[...document.querySelectorAll('input')].filter(e => e.closest('.field--invalid') && e.getAttribute('aria-invalid') === 'true').map(e => e.name)");
+  const submit = 'form button[type=submit]';
+  await b.click(submit);
+  await b.waitText('Nhập số điện thoại.');
+  assert.deepEqual(await invalid(), ['phone'], `${tag} missing phone highlighted another input`);
+  await b.fill('input[name=phone]', '123');
+  assert.deepEqual(await invalid(), [], `${tag} editing phone did not clear its error`);
+  assert.equal(await b.ev(`document.querySelector('${submit}').textContent`), 'Đăng nhập');
+  assert.equal(await b.ev("document.querySelector('.msg--error').hidden"), true);
+  await b.click(submit);
+  await b.waitText('Số điện thoại không hợp lệ.');
+  assert.deepEqual(await invalid(), ['phone']);
+  await b.fill('input[name=phone]', '+84 914 000 001');
+  await b.click(submit);
+  await b.waitText('Nhập mật khẩu.');
+  assert.deepEqual(await invalid(), ['password']);
+  await b.fill('input[name=password]', '');
+  await b.fill('input[name=phone]', '');
+
+  assert.deepEqual(await control('Giới thiệu nền tảng'), { tag: 'A', href: '/landing/', type: null });
+  await b.hash('#/chung/C-01?buoc=dang-ky');
+  await b.fill('input[name=phone]', PHONE);
+  await b.click(submit);
+  await b.waitText('Nhập họ và tên.');
+  assert.deepEqual(await invalid(), ['name']);
+  await b.fill('input[name=name]', NAME);
+  assert.deepEqual(await invalid(), []);
+  await b.fill('input[name=password]', 'short');
+  await b.click(submit);
+  await b.waitText('Mật khẩu cần ít nhất 12 ký tự.');
+  assert.deepEqual(await invalid(), ['password']);
+  await b.hash(resume);
+
   // Keyboard path: phone -> password -> Hiện toggle -> submit, reached with real Tab key events.
   await b.ev("document.querySelector('input[name=phone]').focus()");
   await pressKey('Tab', 'Tab', 9);
@@ -127,8 +160,15 @@ async function runFlow(width) {
   assert.match(await hash(), /^#\/chung\/C-01/, `${tag} wrong password changed route`);
   assert.equal(await b.ev("!!document.querySelector('input[name=password]')"), true, `${tag} wrong password left form`);
   assert.equal(await b.ev("document.body.innerText.includes('Đăng xuất')"), false, `${tag} wrong password authenticated`);
+  assert.deepEqual(await invalid(), ['phone', 'password']);
   const shotWrong = await shot(`c01-wrong-password-${width}`);
   await layoutOk(`c01-wrong-${tag}`);
+  await b.fill('input[name=password]', '');
+  assert.deepEqual(await invalid(), ['phone']);
+  await b.fill('input[name=phone]', '');
+  assert.deepEqual(await invalid(), []);
+  assert.equal(await b.ev("document.querySelector('.msg--error').hidden"), true);
+  assert.equal(await b.ev(`document.querySelector('${submit}').textContent`), 'Đăng nhập');
 
   // Still unauthenticated: a protected route must redirect back to C-01, not render.
   await b.go(`${origin}/v2/#/nong-dan/F-02`);
@@ -143,6 +183,7 @@ async function runFlow(width) {
   await b.waitFor("location.hash.startsWith('#/nong-dan/F-02')");
   await b.waitText('Thửa ruộng');
   assert.equal(await screenTitle(), 'Thửa ruộng', `${tag} resumed route heading`);
+  await b.waitText('Đăng nhập thành công');
   assert.equal(await b.ev("document.body.innerText.includes('Đăng xuất') || document.body.innerText.includes('Thêm thửa')"), true, `${tag} resumed route not signed-in content`);
   await layoutOk(`f02-resumed-${tag}`);
   const shotResumed = await shot(`f02-resumed-${width}`);

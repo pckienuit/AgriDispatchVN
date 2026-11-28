@@ -40,6 +40,12 @@ function passwordInput(autocomplete) {
 }
 
 /* ---------- C-01 ---------- */
+function validPhone(value) {
+  // Match the account API's accepted Vietnamese mobile formats before submitting.
+  const compact = value.replace(/[\s.-]/g, '');
+  return value.length <= 32 && /^(?:0|\+?84)[35789]\d{8}$/.test(compact);
+}
+
 function login(ctx) {
   const register = ctx.params.buoc === 'dang-ky';
   const next = safeNext(ctx.params.tiep, ctx.built);
@@ -51,35 +57,57 @@ function login(ctx) {
   const phone = ui.input({ type: register ? 'tel' : 'text', inputmode: register ? 'tel' : null, name: 'phone', autocomplete: register ? 'tel' : 'username', maxlength: 254, placeholder: 'Ví dụ: 0901 234 567' });
   const name = ui.input({ name: 'name', autocomplete: 'name', maxlength: 120 });
   const password = passwordInput(register ? 'new-password' : 'current-password');
-  const passwordField = ui.field({ id: 'login-password', noId: true, label: 'Mật khẩu', hint: register ? 'Ít nhất 12 ký tự.' : null, input: password.row, required: true });
   const fields = [
     ui.field({ label: 'Số điện thoại', hint: register ? null : 'Tài khoản cũ tạo bằng email thì nhập email.', input: phone, required: true }),
     register ? ui.field({ label: 'Họ và tên', input: name, required: true }) : null,
-    passwordField,
+    ui.field({ id: 'login-password', noId: true, label: 'Mật khẩu', hint: register ? 'Ít nhất 12 ký tự.' : null, input: password.row, required: true }),
   ];
+  const submitLabel = register ? 'Tạo tài khoản' : 'Đăng nhập';
+  function markInvalid(input) {
+    input.closest('.field').classList.add('field--invalid');
+    input.setAttribute('aria-invalid', 'true');
+  }
+  function clearInvalid(input) {
+    input.closest('.field')?.classList.remove('field--invalid');
+    input.removeAttribute('aria-invalid');
+  }
+  function invalid(input, message) {
+    markInvalid(input);
+    throw new Error(message);
+  }
   const form = apiForm({
     fields,
-    submitLabel: register ? 'Tạo tài khoản' : 'Đăng nhập',
+    submitLabel,
     async run(data) {
+      for (const input of form.querySelectorAll('[aria-invalid=true]')) clearInvalid(input);
+      submit.textContent = submitLabel;
+      const phoneValue = String(data.get('phone') || '').trim();
+      const pass = String(data.get('password') || '');
+      // Accounts created before phone sign-in still use their email as the identifier.
+      const email = !register && phoneValue.includes('@');
+      if (!phoneValue) invalid(phone, 'Nhập số điện thoại.');
+      if (email ? !/^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}$/i.test(phoneValue) : !validPhone(phoneValue)) {
+        invalid(phone, email ? 'Email không hợp lệ.' : 'Số điện thoại không hợp lệ.');
+      }
+      const nameValue = register ? String(data.get('name') || '').trim() : '';
+      if (register && !nameValue) invalid(name, 'Nhập họ và tên.');
+      if (register && /\p{Cc}/u.test(nameValue)) invalid(name, 'Họ và tên không hợp lệ.');
+      if (!pass) invalid(password.input, 'Nhập mật khẩu.');
+      if (register && [...pass].length < 12) invalid(password.input, 'Mật khẩu cần ít nhất 12 ký tự.');
+      if (new globalThis.TextEncoder().encode(pass).length > 128) invalid(password.input, 'Mật khẩu quá dài.');
+      if (register) await ctx.api.request('POST', '/api/auth/register', { body: { phone: phoneValue, password: pass, name: nameValue } });
+      const id = email ? { email: phoneValue } : { phone: phoneValue };
       try {
-        const phoneValue = String(data.get('phone') || '').trim();
-        const pass = String(data.get('password') || '');
-        if (!phoneValue) throw new Error('Nhập số điện thoại.');
-        if (register) {
-          const nameValue = String(data.get('name') || '').trim();
-          if (!nameValue) throw new Error('Nhập họ và tên.');
-          if ([...pass].length < 12) throw new Error('Mật khẩu cần ít nhất 12 ký tự.');
-          await ctx.api.request('POST', '/api/auth/register', { body: { phone: phoneValue, password: pass, name: nameValue } });
-        } else if (!pass) throw new Error('Nhập mật khẩu.');
-        // Accounts created before phone sign-in still use their email as the identifier.
-        const id = !register && phoneValue.includes('@') ? { email: phoneValue } : { phone: phoneValue };
         const { data: sessionData } = await ctx.api.request('POST', '/api/auth/login', { body: { ...id, password: pass } });
         return sessionData;
       } catch (error) {
-        // Figma C-01 failed state: red password field and a retry label on the button.
-        passwordField.classList.add('field--invalid');
-        password.input.setAttribute('aria-invalid', 'true');
-        if (!register) form.querySelector('button[type=submit]').textContent = 'Đăng nhập lại';
+        if (error?.code === 'INVALID_CREDENTIALS' && password.input.value === pass && phone.value.trim() === phoneValue) {
+          markInvalid(password.input);
+          if (!register) {
+            markInvalid(phone);
+            submit.textContent = 'Đăng nhập lại';
+          }
+        }
         throw error;
       }
     },
@@ -91,8 +119,14 @@ function login(ctx) {
   });
   // Figma C-01 failed state puts the error banner at the top of the form, not under the button.
   const errorBox = form.querySelector('.msg--error');
+  const submit = form.querySelector('button[type=submit]');
   errorBox.classList.add('msg--banner');
   form.prepend(errorBox);
+  form.addEventListener('input', ({ target }) => {
+    clearInvalid(target);
+    submit.textContent = submitLabel;
+    if (!form.querySelector('[aria-invalid=true]')) errorBox.hidden = true;
+  });
   return h('div', { class: 'stack' },
     h('p', { class: 'row row--nowrap' }, ui.icon('plant'), h('strong', null, 'AgriDispatch VN'), h('span', { class: 'muted small' }, 'Điều phối máy gặt ĐBSCL')),
     h('p', { class: 'muted' }, 'Dùng số điện thoại và mật khẩu đã đăng ký để vào đúng bàn làm việc theo vai trò của bạn.'),
@@ -108,7 +142,9 @@ function login(ctx) {
         ui.button({ label: 'Đăng ký tài khoản mới', kind: 'ghost', block: true, href: url('chung', 'C-01', { buoc: 'dang-ky', tiep: ctx.params.tiep }) }),
         h('span', { class: 'small muted' }, 'Quên mật khẩu? Bản thử nghiệm chưa có chức năng đặt lại mật khẩu.'),
         ui.banner({ tone: 'info', text: 'Quản trị viên dùng tài khoản nội bộ do nền tảng cấp, đăng nhập tại đây.' })),
-    ui.button({ label: 'Xem danh mục dịch vụ', kind: 'ghost', block: true, href: url('chung', 'C-05') }),
+    h('nav', { class: 'auth-links', 'aria-label': 'Khám phá AgriDispatch VN' },
+      ui.button({ label: 'Xem danh mục dịch vụ', kind: 'ghost', href: url('chung', 'C-05') }),
+      ui.button({ label: 'Giới thiệu nền tảng', kind: 'ghost', href: '/landing/' })),
     h('p', { class: 'small muted' }, 'AgriDispatch VN. Dữ liệu mẫu minh họa. Bản thử nghiệm chưa gửi mã OTP; mật khẩu chỉ gửi tới máy chủ của hệ thống.'));
 }
 
@@ -131,6 +167,10 @@ async function account(ctx) {
     onChange(v) { ui.theme.set(v); ctx.rerender(); },
   });
 
+  themeSeg.classList.add('account-theme');
+  const roleList = ui.list(roles.map((r) => ui.listItem({ title: ROLE_INFO[r.apiRole].name, meta: ROLE_INFO[r.apiRole].desc, href: roleHome(r.slug), icon: ROLE_ICON[r.apiRole], right: ui.badge('Đã có quyền', 'ok') })));
+  roleList.classList.add('account-roles');
+
   const canRequest = REQUESTABLE.filter((r) => !user.roles.includes(r) && !pending.has(r));
   let picked = canRequest[0] || null;
 
@@ -146,7 +186,7 @@ async function account(ctx) {
       user.phone ? ['Số điện thoại', user.phone] : null,
       user.email ? ['Email', user.email] : null,
     ]) }),
-    ui.card({ title: 'Vai trò làm việc', subtitle: 'Chọn 1 vai trò để vào màn hình chính tương ứng.', body: ui.list(roles.map((r) => ui.listItem({ title: ROLE_INFO[r.apiRole].name, meta: ROLE_INFO[r.apiRole].desc, href: roleHome(r.slug), icon: ROLE_ICON[r.apiRole], right: ui.badge('Đã có quyền', 'ok') }))) }),
+    ui.card({ title: 'Vai trò làm việc', subtitle: 'Chọn 1 vai trò để vào màn hình chính tương ứng.', body: roleList }),
     ui.card({ title: 'Xin thêm vai trò', subtitle: 'Quản trị nền tảng duyệt từng yêu cầu. Chưa có bước kiểm giấy tờ.', body: canRequest.length
       ? h('div', { class: 'stack-sm' },
         ui.choices({ name: 'role', label: 'Vai trò muốn xin', value: picked, options: canRequest.map((r) => ({ value: r, label: ROLE_INFO[r].name, desc: ROLE_INFO[r].desc })), onChange(v) { picked = v; } }),

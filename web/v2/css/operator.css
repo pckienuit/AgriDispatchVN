@@ -20,7 +20,7 @@
 .op-readout__n { font-size: var(--t-72); line-height: 1; font-weight: 500; letter-spacing: -.02em; }
 .op-readout__u { font-size: var(--t-24); color: var(--ink-2); font-weight: 600; }
 .op-gauge { display: flex; flex-direction: column; gap: 8px; }
-.op-gauge__bar { position: relative; height: 28px; border-radius: var(--r-ctl); background: var(--surface-2); border: 1px solid var(--line-strong); }
+.op-gauge__bar { position: relative; height: 28px; border-radius: var(--r-ctl); background: var(--surface-2); border: 1px solid var(--line-ctl); }
 .op-gauge__zone { position: absolute; top: 0; bottom: 0; background: var(--tm-work-bg); border-inline: 2px solid var(--tm-work-ink); }
 .op-gauge__mark { position: absolute; top: -6px; bottom: -6px; width: 4px; margin-left: -2px; border-radius: 2px; background: var(--tm-idle-ink); }
 .op-gauge__mark.is-work { background: var(--tm-work-ink); }
@@ -30,7 +30,8 @@
 .op-ctl { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .op-ctl--3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .op-ctl--3 .btn { padding: 0 4px; font-size: var(--t-16); min-height: var(--ctl-h); }
-.op-cutter { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 72px; padding: 8px 12px; border-radius: var(--r-ctl); border: 2px solid var(--line-strong); background: var(--surface); color: var(--ink); font: 700 var(--t-20)/1.2 var(--font); cursor: pointer; }
+.op-cutter { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 72px; padding: 8px 12px; border-radius: var(--r-ctl); border: 2px solid var(--line-ctl); background: var(--surface); color: var(--ink); font: 700 var(--t-20)/1.2 var(--font); cursor: pointer; }
+.op-cutter { transition: background-color var(--motion-fast), border-color var(--motion-fast), transform var(--motion-fast); }
 .op-cutter .ph { font-size: var(--t-28); }
 .op-cutter .small { font-weight: 500; color: var(--ink-2); }
 .op-cutter[aria-pressed=true] { border-color: var(--tm-work-ink); background: var(--tm-work-bg); color: var(--tm-work-ink); }

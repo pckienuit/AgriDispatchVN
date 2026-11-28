@@ -320,6 +320,7 @@ function roleRequestDecisionCard(ctx, item) {
         } catch (error) {
           if (ctx.stale()) return;
           if (error instanceof ApiError && refusalText(error.code)) {
+            ui.clearToasts();
             approveAlert.textContent = refusalText(error.code);
             approveAlert.hidden = false;
             return;
@@ -466,6 +467,7 @@ function certificateReviewCard(ctx, cert) {
 
 function certificateQueueSection(ctx, certResult, certOffset, base) {
   if (certResult.error) {
+    if (!ctx.stale()) ui.clearToasts();
     return ui.card({
       title: 'Chứng chỉ tự khai chờ xem xét',
       body: ui.errorState({ title: 'Chưa tải được hàng chờ chứng chỉ', text: apiRefusalMessage(certResult.error), retry: () => ctx.rerender() }),
@@ -678,6 +680,7 @@ function evidenceSection(ctx, dispute) {
       }));
     } catch (error) {
       if (!ctx.stale() && slot.isConnected) {
+        ui.clearToasts();
         slot.replaceChildren(h('p', { class: 'small muted', role: 'alert' }, apiRefusalMessage(error)));
       }
     }
@@ -709,6 +712,7 @@ function evidenceSection(ctx, dispute) {
       box.replaceChildren(list);
     } catch (error) {
       if (!ctx.stale() && box.isConnected) {
+        ui.clearToasts();
         box.replaceChildren(ui.note({ tone: 'error', text: apiRefusalMessage(error) }));
       }
     }
@@ -880,6 +884,7 @@ function assignMediatorCard(ctx, dispute) {
       box.replaceChildren(form);
     } catch (error) {
       if (!ctx.stale() && box.isConnected) {
+        ui.clearToasts();
         box.replaceChildren(ui.note({ tone: 'error', text: apiRefusalMessage(error) }));
       }
     }
@@ -1030,6 +1035,7 @@ async function disputeDetailNode(ctx, disputeId) {
     propData = parseProposals(proposalRes.data, disputeId);
   } catch (error) {
     if (error instanceof ApiError && (error.status === 404 || error.status === 403)) {
+      if (!ctx.stale()) ui.clearToasts();
       return ui.empty({
         icon: 'gavel',
         title: 'Không mở được vụ việc này',

@@ -1,4 +1,4 @@
-/* Sinh từ tokens.json bằng scripts/build_tokens.mjs. Không sửa tay. */
+/* Token web v2 đối chiếu với Foundations và Components của Figma AgriDispatch. Giao diện tối do web duy trì. */
 :root {
   --accent: #15803D;
   --accent-hover: #166534;
@@ -13,10 +13,12 @@
   --ink-inverse-2: #E2E8F0;
   --ink-hover: #0F2417;
   --line: rgba(25, 55, 34, .16);
-  --line-strong: rgba(15, 23, 42, .32);
+  --line-strong: rgba(25, 55, 34, .32);
   --line-ctl: rgba(25, 55, 34, .6);
-  --scrim: rgba(15, 23, 42, .5);
-  --scrim-weak: rgba(15, 23, 42, .4);
+  --scrim: rgba(25, 55, 34, .5);
+  --scrim-weak: rgba(25, 55, 34, .4);
+  --motion-fast: 140ms ease-out;
+  --motion-enter: 180ms ease-out;
   --frame-bg: #E7E5DC;
   --fb-info-bg: #E2E8F0;
   --fb-info-ink: #1E293B;

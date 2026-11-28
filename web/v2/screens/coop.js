@@ -665,11 +665,13 @@ async function groupScreen(ctx) {
         const rows = selectedRows();
         const check = groupPreview(rows);
         if (check.count === 0) {
+          ui.clearToasts();
           createFeedback.textContent = 'Chọn ít nhất 1 đơn để tạo gói việc.';
           createFeedback.hidden = false;
           return { ok: false };
         }
         if (check.problem) {
+          ui.clearToasts();
           createFeedback.textContent = check.problem;
           createFeedback.hidden = false;
           return { ok: false };
@@ -681,6 +683,7 @@ async function groupScreen(ctx) {
           });
           return { ok: true, pkg: data?.package };
         } catch (error) {
+          if (!ctx.stale()) ui.clearToasts();
           createFeedback.textContent = coopErrorText(error);
           createFeedback.hidden = false;
           return { ok: false };
@@ -734,7 +737,10 @@ async function groupScreen(ctx) {
         ['Địa phương', preview.locality || 'Không đồng nhất'],
         ['Khoảng thời gian chung', preview.window ? fmtRange(preview.window.startAt, preview.window.endAt) : 'Không có'],
       ]));
-      if (preview.problem) previewWrap.appendChild(ui.note({ tone: 'error', text: preview.problem }));
+      if (preview.problem) {
+        ui.clearToasts();
+        previewWrap.appendChild(ui.note({ tone: 'error', text: preview.problem }));
+      }
       else previewWrap.appendChild(ui.note({ tone: 'success', text: 'Các đơn đã chọn cùng dịch vụ, cùng địa phương và có khung giờ chung.' }));
       paintAdvice(preview);
     }
@@ -1180,7 +1186,10 @@ async function shiftsScreen(ctx) {
             ['Ghi chú kết thúc', detailShift.note || 'Không có'],
           ])),
       }),
-      await telemetryCard(ctx, 'shift', detailShift.id).catch(() => ui.errorState({ title: 'Chưa tải được chỉ số mô phỏng', retry: () => ctx.rerender() })),
+      await telemetryCard(ctx, 'shift', detailShift.id).catch(() => {
+        if (!ctx.stale()) ui.clearToasts();
+        return ui.errorState({ title: 'Chưa tải được chỉ số mô phỏng', retry: () => ctx.rerender() });
+      }),
       ui.card({
         title: 'Nhật ký sự kiện ca máy',
         body: events.length
@@ -1317,6 +1326,7 @@ async function postponementScreen(ctx) {
         await ctx.api.request('POST', `/api/packages/${targetId}/postponement/${latest.version}/consent`, { auth: true, body: {} });
         return { ok: true };
       } catch (error) {
+        if (!ctx.stale()) ui.clearToasts();
         consentFeedback.textContent = coopErrorText(error);
         consentFeedback.hidden = false;
         return { ok: false };
@@ -1459,6 +1469,7 @@ async function inspectionScreen(ctx) {
     } catch (error) {
       if (ctx.stale()) return h('div');
       if (error?.status === 403 || error?.status === 404) {
+        ui.clearToasts();
         return h('div', { class: 'stack htx' },
           ui.screenHead({
             title: 'Thẩm định thực địa',
@@ -1492,6 +1503,7 @@ async function inspectionScreen(ctx) {
     } catch (error) {
       if (ctx.stale()) return h('div');
       if (requestedPkgId && (error?.status === 403 || error?.status === 404)) {
+        ui.clearToasts();
         return h('div', { class: 'stack htx' },
           ui.screenHead({ title: 'Thẩm định thực địa' }),
           invalidIdEmpty('Không tìm thấy gói việc', 'Gói việc không tồn tại hoặc không thuộc quyền quản lý của HTX này.', 'Về thẩm định thực địa', url('htx', 'H-04')));
@@ -1655,6 +1667,7 @@ async function inspectionScreen(ctx) {
             ctx.toast('Đã ghi nhận Đạt thẩm định thực địa', 'ok');
             ctx.rerender();
           } catch (error) {
+            if (!ctx.stale()) ui.clearToasts();
             passFeedback.textContent = coopErrorText(error);
             passFeedback.hidden = false;
           } finally {
@@ -1941,6 +1954,7 @@ function htxEvidenceViewer({ ctx, items, total }) {
               style: 'max-width: 180px; border-radius: 8px; border: 1px solid var(--line);',
             }));
           } catch (error) {
+            if (!ctx.stale() && msg.isConnected) ui.clearToasts();
             msg.textContent = coopErrorText(error);
             msg.hidden = false;
             thumbBtn.disabled = false;
@@ -1977,6 +1991,7 @@ function htxEvidenceViewer({ ctx, items, total }) {
               },
             });
           } catch (error) {
+            if (!ctx.stale() && msg.isConnected) ui.clearToasts();
             msg.textContent = coopErrorText(error);
             msg.hidden = false;
           } finally {
@@ -2166,6 +2181,7 @@ async function mediationScreen(ctx) {
             ctx.toast('Đã nhận hòa giải cấp HTX', 'ok');
             ctx.rerender();
           } catch (error) {
+            if (!ctx.stale()) ui.clearToasts();
             claimFeedback.textContent = coopErrorText(error);
             claimFeedback.hidden = false;
           } finally {
@@ -2221,6 +2237,7 @@ async function mediationScreen(ctx) {
     } catch (error) {
       if (ctx.stale()) return h('div');
       if (error?.status === 403 || error?.status === 404) {
+        ui.clearToasts();
         return ui.empty({
           icon: 'prohibit',
           title: 'Không có quyền xem chi tiết vụ việc',

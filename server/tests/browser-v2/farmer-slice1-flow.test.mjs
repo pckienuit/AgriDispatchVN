@@ -235,6 +235,13 @@ async function runAt(width) {
     assert.deepEqual(hrefs.map((h) => h.split('id=')[1]).sort(), ids);
     assert.ok((await mainText()).includes(fieldName));
     await assertLayout(`${w} F-07 list reload`);
+    const cards = await browser.ev(`Array.from(document.querySelectorAll('#main ul.list > li a'), a => ({
+      height: Math.round(a.getBoundingClientRect().height),
+      titleWidth: Math.round(a.querySelector('.item__title').getBoundingClientRect().width),
+    }))`);
+    const minTitleWidth = width === 390 ? 280 : 360;
+    assert.ok(cards.every(({ height, titleWidth }) => height < 200 && titleWidth >= minTitleWidth), `crushed F-07 order cards: ${JSON.stringify(cards)}`);
+    log(`${w} F-07 card geometry`, cards);
   });
   await browser.shot(join(SHOTS, `${width}-8-f07-list-after-reload.png`));
 
