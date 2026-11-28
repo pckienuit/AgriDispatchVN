@@ -9,9 +9,11 @@ export function configuredBlobStore(env) {
   const names=['EVIDENCE_BLOB_ACCOUNT_URL','EVIDENCE_CONTAINER','THUMBNAIL_CONTAINER'];
   if(!names.some(name=>env[name]!==undefined))return null;
   if(!env.EVIDENCE_BLOB_ACCOUNT_URL||!env.IDENTITY_ENDPOINT||!env.IDENTITY_HEADER)throw new TypeError('Incomplete evidence storage configuration');
-  return createBlobStore({accountUrl:env.EVIDENCE_BLOB_ACCOUNT_URL,
+  const inline = env.EVIDENCE_INLINE_THUMBNAILS;
+  if (inline !== undefined && !['true', 'false'].includes(inline)) throw invalid('Invalid inline thumbnail setting');
+  return createBlobStore({accountUrl:env.EVIDENCE_BLOB_ACCOUNT_URL, inlineThumbnails:inline !== 'false',
     inputContainer:env.EVIDENCE_CONTAINER??'evidence',thumbnailContainer:env.THUMBNAIL_CONTAINER??'thumbnails',
-    getToken:createManagedIdentityTokenProvider({endpoint:env.IDENTITY_ENDPOINT,identityHeader:env.IDENTITY_HEADER})});
+    getToken:createManagedIdentityTokenProvider({endpoint:env.IDENTITY_ENDPOINT,identityHeader:env.IDENTITY_HEADER,clientId:env.AZURE_CLIENT_ID})});
 }
 const MAX_TIMEOUT_MS = 30000;
 const DEFAULT_TIMEOUT_MS = 10000;
@@ -127,6 +129,7 @@ export function createBlobStore({
   thumbnailContainer = 'thumbnails',
   getToken,
   allowLoopback = false,
+  inlineThumbnails = true,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 }) {
   const origin = validateAccountUrl(accountUrl, allowLoopback === true);
@@ -215,11 +218,13 @@ export function createBlobStore({
     });
   }
 
-  async function remove(key) {
+  async function remove(key, { thumbnail = false } = {}) {
     checkKey(key);
+    const container = thumbnail ? thumbnailContainer : inputContainer;
+    const name = thumbnail ? `${key}.jpg` : key;
     return call(async (signal) => {
       const auth = await authorization(signal);
-      const response = await fetch(blobUrl(origin, inputContainer, key), {
+      const response = await fetch(blobUrl(origin, container, name), {
         method: 'DELETE',
         headers: headers(auth),
         signal,
@@ -248,10 +253,10 @@ export function createBlobStore({
       return {created:true};
     });
   }
-  return { put, get, remove, putThumbnail };
+  return { put, get, remove, putThumbnail, inlineThumbnails };
 }
 
-export function createManagedIdentityTokenProvider({ endpoint, identityHeader, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+export function createManagedIdentityTokenProvider({ endpoint, identityHeader, clientId, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   let url;
   try {
     url = new URL(endpoint);
@@ -267,6 +272,10 @@ export function createManagedIdentityTokenProvider({ endpoint, identityHeader, t
   validateTimeout(timeoutMs);
   url.searchParams.set('resource', STORAGE_RESOURCE);
   url.searchParams.set('api-version', IDENTITY_API_VERSION);
+  if (clientId !== undefined) {
+    if (typeof clientId !== 'string' || !new RegExp(`^${UUID}$`, 'i').test(clientId)) throw invalid('Invalid Azure client ID');
+    url.searchParams.set('client_id', clientId);
+  }
 
   let cached = null;
   let inflight = null;

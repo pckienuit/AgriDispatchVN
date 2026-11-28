@@ -144,6 +144,14 @@ test('bootstrapDatabase refuses unmigrated DB, then creates least-privilege SCRA
   await assert.rejects(() => bookPool.query('CREATE TABLE dispatch.evil (x int)'), /permission denied/);
   await assert.rejects(() => bookPool.query('TRUNCATE dispatch.services'), /permission denied/);
 
+  await assert.rejects(() => accPool.query('SELECT * FROM dispatch.user_notifications'), { code: '42501' });
+  await assert.rejects(() => accPool.query("SELECT dispatch.publish_user_notification(NULL,'TEST',NULL,NULL,'Test',NULL,'{}')"), { code: '42501' });
+  await assert.rejects(() => bookPool.query('DELETE FROM dispatch.user_notifications'), { code: '42501' });
+  const { rows: [notice] } = await bookPool.query(
+    "INSERT INTO dispatch.user_notifications (recipient_user_id,event_type,title) VALUES(gen_random_uuid(),'TEST','Test') RETURNING id",
+  );
+  assert.equal((await bookPool.query('UPDATE dispatch.user_notifications SET read_at = now() WHERE id = $1', [notice.id])).rowCount, 1);
+
   // Allowed narrow read on account.users(id, name).
   await bookPool.query('SELECT id, name FROM account.users LIMIT 1');
 
