@@ -2,7 +2,7 @@ import express from 'express';
 import { parsePagination } from './catalog.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DEFAULTS = { clusterMinHa: 15, clusterTargetHa: 20, clusterMaxHa: 50, droneMinHa: 20, radiusM: 1500, dtDays: 2, tier1Km: 30, tier2Km: 40, round1Hours: 2, basePerHa: 1500000, muddyPerHa: 300000, lodgedPerHa: 400000, lodgedThresholdPct: 30, dieselBase: 20000, dieselNow: 21500, dieselLitersPerHa: 14, depositPct: 10, depositHours: 12, disputeHours: 12, platformFeePct: 2.5, hubCommissionPct: 4 };
+export const PLATFORM_PARAMETER_DEFAULTS = { clusterMinHa: 15, clusterTargetHa: 20, clusterMaxHa: 50, droneMinHa: 20, radiusM: 1500, dtDays: 2, tier1Km: 30, tier2Km: 40, round1Hours: 2, basePerHa: 1500000, muddyPerHa: 300000, lodgedPerHa: 400000, lodgedThresholdPct: 30, dieselBase: 20000, dieselNow: 21500, dieselLitersPerHa: 14, depositPct: 10, depositHours: 12, disputeHours: 12, platformFeePct: 2.5, hubCommissionPct: 4 };
 const PARAMS = {
   clusterMinHa: [0.1, 10000], clusterTargetHa: [0.1, 10000], clusterMaxHa: [0.1, 10000],
   droneMinHa: [0.1, 10000], radiusM: [1, 100000], dtDays: [0, 365], tier1Km: [0, 1000], tier2Km: [0, 1000],
@@ -34,7 +34,7 @@ export function createPlatformControlsRouter({ pool, authenticate }) {
   );
   const loadEffective = async () => {
     const { rows } = await pool.query('SELECT version, parameters, changed_by, note, created_at FROM dispatch.platform_parameter_versions ORDER BY version DESC LIMIT 1');
-    return rows[0] ? { version: rows[0].version, values: { ...DEFAULTS, ...rows[0].parameters }, changedBy: rows[0].changed_by, note: rows[0].note, createdAt: rows[0].created_at, assumptions: true } : { version: 0, values: DEFAULTS, changedBy: null, note: 'Mặc định giả định, chưa được quản trị viên lưu.', createdAt: null, assumptions: true };
+    return rows[0] ? { version: rows[0].version, values: { ...PLATFORM_PARAMETER_DEFAULTS, ...rows[0].parameters }, changedBy: rows[0].changed_by, note: rows[0].note, createdAt: rows[0].created_at, assumptions: true } : { version: 0, values: PLATFORM_PARAMETER_DEFAULTS, changedBy: null, note: 'Mặc định giả định, chưa được quản trị viên lưu.', createdAt: null, assumptions: true };
   };
   // Effective read contract for clustering/quote clients. No fees are charged by this endpoint.
   router.get('/api/platform-parameters', handle(async (_req, res) => res.set('Cache-Control', 'no-store').json({ effective: await loadEffective() })));
@@ -55,7 +55,7 @@ export function createPlatformControlsRouter({ pool, authenticate }) {
       const { rows } = await client.query('INSERT INTO dispatch.platform_parameter_versions(parameters,changed_by,note) VALUES($1,$2,$3) RETURNING version,parameters,changed_by,note,created_at', [JSON.stringify(values), req.actor.id, req.body.note.trim()]);
       await event(client, req.actor.id, 'PARAMETERS_CHANGED', null, { version: rows[0].version, keys: Object.keys(values) });
       await client.query('COMMIT');
-      res.status(201).json({ effective: { ...rows[0], values: { ...DEFAULTS, ...values } } });
+      res.status(201).json({ effective: { ...rows[0], values: { ...PLATFORM_PARAMETER_DEFAULTS, ...values } } });
     } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
   }));
   // Operator report action contract for O-04: POST /api/jobs/:id/reports {reason}; report does not change job or actor status.

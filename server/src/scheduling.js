@@ -73,8 +73,9 @@ export function createSchedulingRouter({ pool, authenticate }) {
     await lockResources(client, keys);
     const machine = await client.query('SELECT machine_type,status FROM dispatch.machines WHERE id=$1 AND owner_id=$2 FOR SHARE', [machineId, req.actor.id]);
     if (!machine.rows[0]) throw fail(404, 'NOT_FOUND');
-    const service = await client.query('SELECT code FROM dispatch.services WHERE id=$1', [pkg.service_id]);
-    if (machine.rows[0].status !== 'available' || machine.rows[0].machine_type !== machineTypes[service.rows[0]?.code]) throw fail(409, 'MACHINE_UNAVAILABLE');
+    const { rows: [service] } = await client.query('SELECT code, machine_type FROM dispatch.services WHERE id=$1', [pkg.service_id]);
+    const requiredType = service?.machine_type ?? machineTypes[service?.code];
+    if (machine.rows[0].status !== 'available' || machine.rows[0].machine_type !== requiredType) throw fail(409, 'MACHINE_UNAVAILABLE');
     // Single-DB demo: role and accepted recruitment commitment are verified from their owning schemas.
     const consent = await client.query(`SELECT 1 FROM dispatch.offers o JOIN dispatch.jobs j ON j.id=o.job_id
       JOIN account.user_roles r ON r.user_id=o.operator_id AND r.role='operator'
