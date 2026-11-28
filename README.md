@@ -11,10 +11,12 @@ Nền tảng điều phối dịch vụ cơ giới hóa nông nghiệp Việt Na
 - Seed danh mục có nhãn synthetic, giá chỉ dùng thử. Chưa có dữ liệu thực địa trong DB.
 - Đã có luồng local: đặt dịch vụ, HTX gom đơn, phân máy/thợ, tuyển thợ, ca làm, nghiệm thu, ghi nhận chuyển tiền bên ngoài, khiếu nại/hòa giải và hoãn lịch có đồng thuận từng bên.
 - Hợp đồng API: [docs/api.md](docs/api.md). Các mốc bàn giao nội bộ nằm trong `docs/cloud-stages.md` ở repo phát triển.
-- UI JavaScript thuần có các luồng trên, hoạt động trong app, upload bằng chứng riêng tư và hàng chờ quản trị duyệt vai trò. Đây không phải bản Figma nhóm UX/UI đã nghiệm thu.
-- Đã triển khai và kiểm chứng trên Azure staging. Đây không phải bản production.
+- Giao diện gồm trang giới thiệu công khai `/landing/` (nối thật `GET /api/services`), ứng dụng sản phẩm `/v2/` (54 màn hình đồng bộ token Figma) và shell `/` tương thích ngược kèm liên kết sang `/landing/` và `/v2/`.
+- Bản triển khai Azure staging `rg-is402-agri` hiện vẫn giữ ghim tại mốc IS402 (`is402-b1-live-12154ad` / `is402-cloud-3a1f1e0`); nhánh hợp nhất này chưa tự động phát hành lên Azure trước khi diễn tập migration `018`–`026` và cấp quyền runtime role.
 
 ## Kết quả triển khai và kiểm chứng trên Microsoft Azure (`rg-is402-agri`, Japan East)
+
+> **Lưu ý nguồn bằng chứng (provenance):** Các số liệu triển khai Azure dưới đây được đo trên mốc đóng băng IS402 (`tag is402-b1-live-12154ad` cho staging Web App `12154ad` và `tag is402-cloud-3a1f1e0` cho hồ sơ BT05 `3a1f1e0`), không đại diện cho việc HEAD hợp nhất hiện tại đã chạy trên Azure.
 
 ### FaaS: tạo thumbnail riêng tư
 
