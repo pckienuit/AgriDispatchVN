@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { sanitizeRequestId } from './observability.js';
+import { crossOriginWrite, requestToken } from './auth/session-cookie.js';
 
 const { AbortSignal } = globalThis;
 const roles = new Set(['farmer', 'provider', 'operator', 'coop', 'admin']);
@@ -15,8 +16,10 @@ export function createAccountAuth({ accountServiceUrl, internalServiceToken, tim
   }
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 10000) throw new Error('Invalid identity timeout');
   return async function authenticate(req, res, next) {
-    const authorization = req.get('Authorization');
-    const token = typeof authorization === 'string' && /^Bearer ([A-Za-z0-9_-]{16,256})$/.exec(authorization)?.[1];
+    const token = requestToken(req, /^Bearer ([A-Za-z0-9_-]{16,256})$/);
+    if (req.get('Authorization') === undefined && token && crossOriginWrite(req)) {
+      return res.status(403).json({ error: { code: 'CROSS_ORIGIN_REQUEST' } });
+    }
     if (!token) return res.status(401).json({ error: { code: 'UNAUTHENTICATED' } });
     try {
       const response = await fetch(new URL('/internal/introspect', url), {

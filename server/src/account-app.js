@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Buffer } from 'node:buffer';
+import { setImmediate } from 'node:timers';
 import express from 'express';
 import { rejectNullBytes } from './reject-null-bytes.js';
 import {
@@ -9,6 +10,8 @@ import {
 } from './client-identity.js';
 import { createRequestContext } from './observability.js';
 import { hashPassword, verifyPassword } from './auth/password.js';
+import { createOtpDelivery, generateOtp, OTP_FORMAT, OTP_MAX_ATTEMPTS } from './auth-otp.js';
+import { cookieOptions, crossOriginWrite, requestToken, SESSION_COOKIE, SESSION_ID, SESSION_TOKEN } from './auth/session-cookie.js';
 import {createRoleRequestRouter} from './role-requests.js';
 import {
   clearRateLimit,
@@ -18,6 +21,12 @@ import {
   findSession,
   findUserByIdentifier,
   hitRateLimit,
+  listSessions,
+  pruneSessions,
+  preparePasswordReset,
+  tryPasswordReset,
+  replacePassword,
+  revokeOwnedSession,
   revokeSession,
   withTransaction,
 } from './auth/store.js';
@@ -37,7 +46,6 @@ const THROTTLE_BOUNDS = {
 const EMAIL = /^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}$/;
 // Vietnamese mobile numbers in national format. Prefixes 03, 05, 07, 08, 09 per current numbering plan.
 const PHONE = /^0[35789][0-9]{8}$/;
-const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const BEARER = /^Bearer ([A-Za-z0-9_-]{43})$/;
 
 // Validates the service options once; shared with account-server so both entry points enforce the same rules.
@@ -114,6 +122,12 @@ function identifierFrom(body, otherFields) {
   return { email: normalizeEmail(body.email) };
 }
 
+function resetIdentifier(value) {
+  const email = typeof value === 'string' && value.includes('@');
+  const normalized = email ? normalizeEmail(value) : normalizePhone(value);
+  return { value: normalized, lookup: email ? { email: normalized } : { phone: normalized } };
+}
+
 function normalizeName(value) {
   if (typeof value !== 'string') throw bad();
   const name = value.trim();
@@ -137,10 +151,13 @@ function sendError(res, error) {
   res.status(error.status).json({ error: { code: error.code } });
 }
 
-export function createAccountApp({ pool, buildSha = 'development', log, ...options }) {
+export function createAccountApp({ pool, buildSha = 'development', log, otpEnv = process.env, ...options }) {
   const { internalServiceToken, sessionTtlSeconds, throttle, requireSignedClientIdentity } = checkAccountOptions(options);
   const serviceDigest = createHash('sha256').update(internalServiceToken).digest();
   const clientIdentityKey = deriveClientIdentityKey(internalServiceToken);
+  const deliverOtp = createOtpDelivery(otpEnv);
+  // ponytail: bounded in-process delivery; restart can drop a pending message. Use a durable queue if delivery must survive restart.
+  let pendingDeliveries = 0;
   let dummyHash;
   // Unknown emails still pay one scrypt verification, so response time does not reveal account existence.
   const missingUserHash = () => {
@@ -150,11 +167,22 @@ export function createAccountApp({ pool, buildSha = 'development', log, ...optio
   const allowed = (scope, value, max) => hitRateLimit(pool, scope, value, max, throttle.windowSeconds);
   const rateLimited = () => Object.assign(new HttpError(429, 'RATE_LIMITED'), { retryAfter: throttle.windowSeconds });
   const clientKey = (req) => req.verifiedClientIp ?? normalizeIp(req.socket.remoteAddress, { allowZone: true }) ?? 'unknown';
-  const bearer = (req) => {
-    const match = BEARER.exec(req.get('authorization') ?? '');
-    if (!match) throw unauthorized();
-    return match[1];
+  const sessionToken = (req) => {
+    const token = requestToken(req, BEARER);
+    if (!token) throw unauthorized();
+    return token;
   };
+  const requireSession = async (db, req) => {
+    const found = await findSession(db, sessionToken(req));
+    if (!found) throw unauthorized();
+    return found;
+  };
+  const issue = (client, req, user) => createSession(client, user.id, sessionTtlSeconds, {
+    userAgent: [...(req.get('User-Agent') ?? '').replace(/\p{Cc}/gu, '')].slice(0, 160).join('') || null,
+    ip: clientKey(req) === 'unknown' ? null : clientKey(req),
+  });
+  const setCookie = (req, res, token) => res.cookie(SESSION_COOKIE, token, { ...cookieOptions(req), maxAge: sessionTtlSeconds * 1000 });
+  const clearCookie = (req, res) => res.clearCookie(SESSION_COOKIE, cookieOptions(req));
 
   // Routes run inside this wrapper: expected HttpErrors keep their status; anything else is a dependency failure.
   const route = (handler) => async (req, res) => {
@@ -184,6 +212,10 @@ export function createAccountApp({ pool, buildSha = 'development', log, ...optio
       res.set('Cache-Control', 'no-store');
       return sendError(res, new HttpError(400, 'INVALID_CLIENT_IDENTITY'));
     }
+    if ((req.get('Authorization') === undefined || ['/api/auth/login', '/api/auth/register'].includes(req.path)) && crossOriginWrite(req)) {
+      res.set('Cache-Control', 'no-store');
+      return sendError(res, new HttpError(403, 'CROSS_ORIGIN_REQUEST'));
+    }
     req.verifiedClientIp = identity.ok ? identity.address : null;
     return next();
   });
@@ -204,14 +236,19 @@ export function createAccountApp({ pool, buildSha = 'development', log, ...optio
     const password = passwordWithinBytes(req.body.password, 12);
     if (!(await allowed('register-ip', clientKey(req), throttle.registerIpMax))) throw rateLimited();
     const passwordHash = await hashPassword(password);
-    let user;
+    let result;
+    await pruneSessions(pool);
     try {
-      user = await withTransaction(pool, (client) => createUser(client, { ...identifier, name, passwordHash }));
+      result = await withTransaction(pool, async (client) => {
+        const user = await createUser(client, { ...identifier, name, passwordHash });
+        return { user, session: await issue(client, req, user) };
+      });
     } catch (error) {
       if (error.code === '23505' && ['users_email_key', 'users_phone_key'].includes(error.constraint)) throw new HttpError(409, 'CONFLICT');
       throw error;
     }
-    res.status(201).json({ user: publicUser(user) });
+    setCookie(req, res, result.session.token);
+    res.status(201).json({ user: publicUser(result.user) });
   }));
 
   app.post('/api/auth/login', route(async (req, res) => {
@@ -241,19 +278,104 @@ export function createAccountApp({ pool, buildSha = 'development', log, ...optio
         WHERE bucket = $1 AND hits <= 1 AND NOT EXISTS (SELECT 1 FROM dec)`,
       [digest(`login-ip\u0000${clientIp}`)],
     );
-    const session = await withTransaction(pool, (client) => createSession(client, user.id, sessionTtlSeconds));
-    res.json({ token: session.token, expiresAt: session.expiresAt, user: publicUser(user) });
+    await pruneSessions(pool);
+    const session = await withTransaction(pool, async (client) => {
+      // A login that verified an old hash cannot mint a session after reset/change.
+      const { rows } = await client.query('SELECT password_hash FROM account.users WHERE id = $1 FOR UPDATE', [user.id]);
+      if (rows[0]?.password_hash !== user.passwordHash) throw new HttpError(401, 'INVALID_CREDENTIALS');
+      return issue(client, req, user);
+    });
+    setCookie(req, res, session.token);
+    res.json({ ...(req.get('Prefer') === 'session-cookie' ? {} : { token: session.token }),
+      expiresAt: session.expiresAt, user: publicUser(user) });
   }));
 
   app.post('/api/auth/logout', route(async (req, res) => {
-    if (!(await revokeSession(pool, bearer(req)))) throw unauthorized();
+    clearCookie(req, res);
+    if (!(await revokeSession(pool, sessionToken(req)))) throw unauthorized();
     res.status(204).end();
   }));
 
   app.get('/api/me', route(async (req, res) => {
-    const found = await findSession(pool, bearer(req));
-    if (!found) throw unauthorized();
+    const found = await requireSession(pool, req);
     res.json({ user: found.user });
+  }));
+
+  app.post('/api/auth/forgot-password', route(async (req, res) => {
+    requireExactFields(req.body, ['identifier']);
+    const { value, lookup } = resetIdentifier(req.body.identifier);
+    const ipAllowed = await allowed('forgot-password-ip', clientKey(req), 15);
+    const idAllowed = ipAllowed && await allowed('forgot-password-id', value, 3);
+    res.json({ ok: true });
+    if (!idAllowed || !deliverOtp || pendingDeliveries >= 16) return;
+    pendingDeliveries += 1;
+    // Do not put account lookup or delivery on the response path, including for unknown identifiers.
+    const send = async () => {
+      const otp = generateOtp();
+      const tokenHash = digest(otp);
+      const user = await preparePasswordReset(pool, lookup, tokenHash);
+      if (!user) return;
+      try {
+        await deliverOtp(value, user.email, otp);
+      } catch {
+        await pool.query('DELETE FROM account.password_reset_tokens WHERE user_id = $1 AND token_hash = $2 AND used_at IS NULL', [user.id, tokenHash]);
+        throw new Error('OTP delivery failed');
+      }
+    };
+    setImmediate(() => {
+      void send().catch(() => console.warn('Password reset delivery failed')).finally(() => { pendingDeliveries -= 1; });
+    });
+  }));
+
+  app.post('/api/auth/reset-password', route(async (req, res) => {
+    requireExactFields(req.body, ['identifier', 'otp', 'newPassword']);
+    const { value, lookup } = resetIdentifier(req.body.identifier);
+    const { otp } = req.body;
+    if (typeof otp !== 'string' || !OTP_FORMAT.test(otp)) throw bad();
+    const newPassword = passwordWithinBytes(req.body.newPassword, 12);
+    if (!(await allowed('reset-password-ip', clientKey(req), 30)) ||
+        !(await allowed('reset-password-id', value, 15))) throw rateLimited();
+    if (!(await tryPasswordReset(pool, lookup, digest(otp), OTP_MAX_ATTEMPTS, () => hashPassword(newPassword)))) {
+      throw new HttpError(400, 'INVALID_OTP');
+    }
+    // Public reset can be performed while signed in as another account. Do not clear an unrelated cookie.
+    res.status(204).end();
+  }));
+
+  app.post('/api/auth/change-password', route(async (req, res) => {
+    const fields = ['currentPassword', 'newPassword'];
+    if (isPlainObject(req.body) && Object.hasOwn(req.body, 'revokeOtherSessions')) fields.push('revokeOtherSessions');
+    requireExactFields(req.body, fields);
+    const { revokeOtherSessions = true } = req.body;
+    if (typeof revokeOtherSessions !== 'boolean') throw bad();
+    const currentPassword = passwordWithinBytes(req.body.currentPassword, 1);
+    const newPassword = passwordWithinBytes(req.body.newPassword, 12);
+    const current = await requireSession(pool, req);
+    if (!(await allowed('change-password-user', current.user.id, 10))) throw rateLimited();
+    const { rows: [user] } = await pool.query('SELECT password_hash FROM account.users WHERE id = $1', [current.user.id]);
+    if (!user || !(await verifyPassword(currentPassword, user.password_hash))) throw new HttpError(401, 'INVALID_CREDENTIALS');
+    const passwordHash = await hashPassword(newPassword);
+    await withTransaction(pool, async (client) => {
+      const { rows } = await client.query('SELECT password_hash FROM account.users WHERE id = $1 FOR UPDATE', [current.user.id]);
+      const session = await requireSession(client, req);
+      if (rows[0]?.password_hash !== user.password_hash) throw new HttpError(401, 'INVALID_CREDENTIALS');
+      await replacePassword(client, current.user.id, passwordHash, revokeOtherSessions ? session.id : false);
+    });
+    res.status(204).end();
+  }));
+
+  app.get('/api/auth/sessions', route(async (req, res) => {
+    const current = await requireSession(pool, req);
+    res.json({ sessions: await listSessions(pool, current.user.id, current.id) });
+  }));
+
+  app.delete('/api/auth/sessions/:sessionId', route(async (req, res) => {
+    const current = await requireSession(pool, req);
+    const id = req.params.sessionId.toLowerCase();
+    if (!SESSION_ID.test(id)) throw bad();
+    if (!(await revokeOwnedSession(pool, current.user.id, id))) throw new HttpError(404, 'NOT_FOUND');
+    if (id === current.id) clearCookie(req, res);
+    res.status(204).end();
   }));
 
   app.post('/internal/introspect', route(async (req, res) => {
@@ -268,8 +390,7 @@ export function createAccountApp({ pool, buildSha = 'development', log, ...optio
 
   app.use(createRoleRequestRouter({pool,authenticate:async(req,res,next)=>{
     try{
-      const found=await findSession(pool,bearer(req));
-      if(!found)return res.status(401).json({error:{code:'UNAUTHENTICATED'}});
+      const found=await requireSession(pool,req);
       req.actor=found.user;next();
     }catch(error){
       res.status(error instanceof HttpError?401:503).json({error:{code:error instanceof HttpError?'UNAUTHENTICATED':'SERVICE_UNAVAILABLE'}});

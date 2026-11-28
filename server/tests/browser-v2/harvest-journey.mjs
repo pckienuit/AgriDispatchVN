@@ -53,7 +53,9 @@ async function actor(role, n) {
 }
 
 async function login(person, slug) {
-  await browser.go(`${origin}/v2/`);
+  // A deliberate actor switch needs an empty browser cookie jar.
+  await browser.send('Network.clearBrowserCookies');
+  await browser.go(`${origin}/v2/?signin=${Date.now()}#/chung/C-01`);
   await browser.waitFor('!!document.querySelector("input[name=phone]")');
   await browser.fill('input[name=phone]', person.phone);
   await browser.fill('input[name=password]', password);

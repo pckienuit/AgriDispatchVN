@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import { mkdtemp, copyFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -47,9 +47,12 @@ test('upgrade from schema 017 preserves email login and booking snapshots throug
         'Thửa nâng cấp',12500,code,name,data_label,price_per_ha_vnd,1500000
       FROM dispatch.services WHERE code='harvest-combine' RETURNING id`, [farmer.id, field.id]);
 
+    const oldToken = randomBytes(32).toString('base64url');
+    await pool.query("INSERT INTO account.sessions (token_hash, user_id, expires_at) VALUES ($1, $2, now() + interval '1 hour')",
+      [createHash('sha256').update(oldToken).digest('hex'), farmer.id]);
     const applied = await migrate(pool);
     assert.deepEqual(applied, names.slice(old.length));
-    assert.ok(applied.includes('026_settlement_deposits.sql'));
+    assert.ok(applied.includes('027_auth_sessions_otp.sql'));
     assert.deepEqual(await migrate(pool), []);
     const internalServiceToken = randomBytes(24).toString('hex');
     const quiet = () => {};
@@ -65,6 +68,14 @@ test('upgrade from schema 017 preserves email login and booking snapshots throug
       assert.equal(response.status, 200, path);
       return response.json();
     }
+    const legacySession = await fetch(`${origin}/api/me`, { headers: { Authorization: `Bearer ${oldToken}` } });
+    assert.equal(legacySession.status, 200);
+    const { sessions } = await get('/api/auth/sessions');
+    assert.equal(sessions.length, 2);
+    const oldSession = sessions.find((session) => !session.isCurrent);
+    assert.match(oldSession.id, /^[0-9a-f-]{36}$/);
+    assert.equal(oldSession.userAgent, null);
+    assert.equal(oldSession.ip, null);
     const { user } = await get('/api/me');
     assert.equal(user.id, farmer.id);
     const { items: [migratedField] } = await get('/api/fields');

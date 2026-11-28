@@ -246,7 +246,7 @@ try {
   assert.ok(rowsBefore[1].includes('Máy gặt đập liên hợp'), `harvester type label: ${rowsBefore[1]}`);
   log('P-04 summary 2/2/1 and table rows with short IDs verified');
 
-  log('Step 1d: P-04 fresh-session readback at 390px (token is memory-only, reload signs out by design)');
+  log('Step 1d: P-04 readback at 390px in a fresh browser profile');
   await session(provider, '#/chu-may/', { width: 390, height: 844, mobile: true });
   await browser.hash('#/chu-may/P-04');
   await browser.waitText(droneName);

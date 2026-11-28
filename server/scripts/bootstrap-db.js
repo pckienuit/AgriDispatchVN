@@ -19,6 +19,7 @@ export const ACCOUNT_TABLES = Object.freeze([
   'sessions',
   'rate_limits',
   'role_requests',
+  'password_reset_tokens',
 ]);
 
 export const DISPATCH_TABLES = Object.freeze([
