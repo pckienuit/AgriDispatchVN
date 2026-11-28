@@ -1,5 +1,5 @@
 // Màn HTX điều phối (H-02, H-03, H-04, H-05, H-06, H-07, H-08) trên API thật. Không dùng dữ liệu mô phỏng hay vị trí GPS giả.
-import { apiButton, apiForm, assumedBadge, errorText } from '../app/actions.js';
+import { apiButton, apiForm, assumedBadge, errorText, DEPOSIT_MESSAGES } from '../app/actions.js';
 import { url } from '../app/routes.js';
 import { ui } from '../kit/ui.js';
 import { coopDepositCallCard } from './deposits.js';
@@ -76,6 +76,7 @@ const CONFLICT_LABELS = {
 const EVIDENCE_TYPES = { 'image/jpeg': 'JPEG', 'image/png': 'PNG' };
 
 const COOP_ERRORS = {
+  ...DEPOSIT_MESSAGES,
   PACKAGE_INCOMPATIBLE: 'Các đơn đã chọn không cùng dịch vụ, cùng địa phương hoặc không có khoảng thời gian chung.',
   BOOKING_NOT_REQUESTED: 'Có đơn đã được gom vào gói khác hoặc đã đổi trạng thái. Tải lại danh sách rồi thử lại.',
   PACKAGE_UNAVAILABLE: 'Gói việc không còn ở trạng thái cho phép thực hiện thao tác này.',

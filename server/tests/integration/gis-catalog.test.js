@@ -87,10 +87,11 @@ test('field polygon round-trips only for its owner and consent withdrawal erases
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM dispatch.fields')).rows[0].n, 0);
   assert.equal((await consent('farmer')).status, 201);
   const shape = polygon();
-  const created = await call('POST', path, 'farmer', { ...fieldInput, boundaryGeojson: shape });
+  const created = await call('POST', path, 'farmer', { ...fieldInput, boundaryGeojson: { ...shape, bbox: [0, 0, 1, 1], junk: 'discard' } });
   assert.equal(created.status, 201, JSON.stringify(created.data));
   const { field } = created.data;
   assert.deepEqual(field.boundaryGeojson, shape);
+  assert.deepEqual((await pool.query('SELECT boundary_geojson FROM dispatch.fields WHERE id = $1', [field.id])).rows[0].boundary_geojson, shape);
   assert.equal(field.calculatedAreaM2, 12204);
   assert.equal(field.areaM2, 12204);
   assert.equal(field.areaHa, 1.2204);
@@ -106,7 +107,7 @@ test('field polygon round-trips only for its owner and consent withdrawal erases
   assert.equal((await call('PATCH', detail, 'other', { name: 'Không được sửa' })).status, 404);
   assert.equal((await call('PATCH', detail, 'farmer', { boundaryGeojson: { type: 'LineString', coordinates: [] } })).status, 400);
   assert.deepEqual((await call('GET', detail, 'farmer')).data.field, field);
-  const updated = await call('PATCH', detail, 'farmer', { boundaryGeojson: polygon(105.8, 10.01), areaM2: 1234 });
+  const updated = await call('PATCH', detail, 'farmer', { boundaryGeojson: { ...polygon(105.8, 10.01), crs: 'ignored' }, areaM2: 1234 });
   assert.equal(updated.status, 200);
   assert.deepEqual(updated.data.field.boundaryGeojson, polygon(105.8, 10.01));
   assert.equal(updated.data.field.areaM2, updated.data.field.calculatedAreaM2);

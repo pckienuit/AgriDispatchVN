@@ -27,8 +27,8 @@ export function cookieOptions(req) {
   return { httpOnly: true, path: '/', sameSite: 'lax', secure: process.env.NODE_ENV === 'production' || isSecure(req) };
 }
 
-export function crossOriginWrite(req) {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return false;
+export function crossOriginWrite(req, { unsafeRead = false } = {}) {
+  if (!unsafeRead && ['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return false;
   if (['cross-site', 'same-site'].includes(req.get('Sec-Fetch-Site'))) return true;
   const origin = req.get('Origin');
   if (origin === undefined) return false;

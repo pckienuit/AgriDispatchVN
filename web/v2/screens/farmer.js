@@ -24,6 +24,7 @@ const BOOKING_EVENT_LABELS = {
   BOOKING_GROUPED: 'Gom đơn vào gói việc',
   BOOKING_ASSIGNED: 'Chủ máy nhận gói việc',
   BOOKING_CANCELLED: 'Hủy đơn',
+  BOOKING_DEPOSIT_EXPIRED: 'Hết hạn cọc, hủy đơn',
 };
 
 const PACKAGE_STATUS_LABELS = {

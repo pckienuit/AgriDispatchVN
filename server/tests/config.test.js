@@ -30,8 +30,13 @@ test('booking runtime refuses missing identity configuration before opening HTTP
   assert.equal(config.accountServiceUrl, 'http://account:3001');
   assert.equal(config.internalServiceToken.length, 32);
   assert.equal(config.depositExpiryHours, 24);
+  assert.equal(config.depositExpirySweepIntervalMs, 300000);
   const env = { ...base, ACCOUNT_SERVICE_URL: config.accountServiceUrl, INTERNAL_SERVICE_TOKEN: config.internalServiceToken };
   assert.equal(readBookingConfig({ ...env, DEPOSIT_EXPIRY_HOURS: '2' }).depositExpiryHours, 2);
+  assert.equal(readBookingConfig({ ...env, DEPOSIT_EXPIRY_SWEEP_INTERVAL_MS: '0' }).depositExpirySweepIntervalMs, 0);
+  for (const DEPOSIT_EXPIRY_SWEEP_INTERVAL_MS of ['-1', '', '1.5', '2147483648']) {
+    assert.throws(() => readBookingConfig({ ...env, DEPOSIT_EXPIRY_SWEEP_INTERVAL_MS }), /DEPOSIT_EXPIRY_SWEEP_INTERVAL_MS/);
+  }
   for (const DEPOSIT_EXPIRY_HOURS of ['0', '-1', '1.5', '721', '24h', '']) {
     assert.throws(() => readBookingConfig({ ...env, DEPOSIT_EXPIRY_HOURS }), /DEPOSIT_EXPIRY_HOURS/);
   }

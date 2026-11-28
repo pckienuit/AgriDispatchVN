@@ -1,4 +1,5 @@
 import express from 'express';
+import { crossOriginWrite, sessionCookie } from './auth/session-cookie.js';
 import { parsePagination } from './catalog.js';
 import { hasOpenDispute } from './disputes.js';
 import { readDepositExpiryHours } from './config.js';
@@ -429,6 +430,11 @@ async function lockDepositPayer(client, actor, bookingId) {
   )).rows[0];
   if (!booking) throw fail(404, 'NOT_FOUND');
 
+  return { booking, pkg, packageId };
+}
+
+async function validateDepositPayer(client, { booking, pkg, packageId }) {
+  const bookingId = booking.id;
   const hold = await loadHold(client, bookingId);
   if (hold?.overdue || hold?.deposit_expired_at) throw fail(409, 'DEPOSIT_EXPIRED');
   if (await hasOpenDispute(client, bookingId)) throw fail(409, 'DISPUTE_OPEN');
@@ -445,12 +451,14 @@ async function lockDepositPayer(client, actor, bookingId) {
   );
   if (!callConf.rows[0]) throw fail(409, 'HTX_CALL_NOT_CONFIRMED');
   await assertFieldInspectionPassedForBooking(client, bookingId);
-  return { booking, pkg, packageId, hold, expectedDepositVnd };
+  return { hold, expectedDepositVnd };
 }
 
 async function issueBookingVietqr(pool, actor, bookingId, hours) {
   return transaction(pool, async (client) => {
-    const { booking, pkg, packageId, hold, expectedDepositVnd } = await lockDepositPayer(client, actor, bookingId);
+    const payer = await lockDepositPayer(client, actor, bookingId);
+    const { booking, pkg, packageId } = payer;
+    const { hold, expectedDepositVnd } = await validateDepositPayer(client, payer);
     if ((await client.query('SELECT 1 FROM dispatch.deposits WHERE booking_id = $1', [bookingId])).rowCount) {
       throw fail(409, 'DEPOSIT_ALREADY_EXISTS');
     }
@@ -473,16 +481,16 @@ async function issueBookingVietqr(pool, actor, bookingId, hours) {
 
 async function reportBookingDeposit(pool, actor, bookingId, input, hours) {
   return transaction(pool, async (client) => {
-    const { booking, pkg, packageId, hold, expectedDepositVnd } = await lockDepositPayer(client, actor, bookingId);
-    if (input.amountVnd !== null && input.amountVnd !== expectedDepositVnd.toString()) {
-      throw fail(409, 'DEPOSIT_AMOUNT_MISMATCH');
-    }
-
-    const existing = await client.query('SELECT * FROM dispatch.deposits WHERE booking_id = $1', [bookingId]);
-    if (existing.rows[0]) {
-      if (existing.rows[0].reference !== input.reference) throw fail(409, 'DEPOSIT_ALREADY_EXISTS');
+    const payer = await lockDepositPayer(client, actor, bookingId);
+    const { booking, pkg, packageId } = payer;
+    const { rows: [existing] } = await client.query('SELECT reference, amount_vnd::text FROM dispatch.deposits WHERE booking_id = $1', [bookingId]);
+    if (existing?.reference === input.reference) {
+      if (input.amountVnd !== null && input.amountVnd !== existing.amount_vnd) throw fail(409, 'DEPOSIT_AMOUNT_MISMATCH');
       return { status: 200, noStore: true, body: await buildBookingDepositView(client, actor, bookingId) };
     }
+    const { hold, expectedDepositVnd } = await validateDepositPayer(client, payer);
+    if (input.amountVnd !== null && input.amountVnd !== expectedDepositVnd.toString()) throw fail(409, 'DEPOSIT_AMOUNT_MISMATCH');
+    if (existing) throw fail(409, 'DEPOSIT_ALREADY_EXISTS');
     if (!(await loadBankAccount(client, pkg.provider_id))) throw fail(409, 'PROVIDER_BANK_ACCOUNT_REQUIRED');
     const payment = await client.query('SELECT 1 FROM dispatch.payments WHERE booking_id = $1 AND reference = $2', [bookingId, input.reference]);
     if (payment.rowCount) throw fail(409, 'REFERENCE_CONFLICT');
@@ -1103,8 +1111,16 @@ export function createLocalServiceExtensionsRouter({ pool, authenticate, deposit
     };
   }));
 
-  router.get('/api/bookings/:id/vietqr', authenticate, handle(['farmer', 'coop'], (req) =>
-    issueBookingVietqr(pool, req.actor, identifier(req.params.id), depositExpiryHours)));
+  const vietqrPath = '/api/bookings/:id/vietqr';
+  router.head(vietqrPath, authenticate, (_req, res) => res.set('Cache-Control', 'no-store').status(204).end());
+  const issueVietqr = handle(['farmer', 'coop'], (req) => {
+    // Compatibility GET opens the hold too, so it needs the same origin check as POST.
+    if (req.get('Authorization') === undefined && sessionCookie(req.get('Cookie')) && crossOriginWrite(req, { unsafeRead: true })) {
+      throw fail(403, 'CROSS_ORIGIN_REQUEST');
+    }
+    return issueBookingVietqr(pool, req.actor, identifier(req.params.id), depositExpiryHours);
+  });
+  router.route(vietqrPath).get(authenticate, issueVietqr).post(authenticate, issueVietqr);
 
   router.get('/api/bookings/:id/deposit', authenticate, handle(['farmer', 'coop', 'provider'], async (req) => {
     const bookingId = identifier(req.params.id);

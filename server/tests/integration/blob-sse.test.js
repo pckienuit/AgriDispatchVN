@@ -48,8 +48,11 @@ test('private Blob evidence and durable SSE enforce participant scope through HT
     const email = `dev55-${name}@example.test`;
     const { user } = await json(request(account, '/api/auth/register', null, { email, name, password }), 201);
     if (role !== 'farmer') await pool.query('INSERT INTO account.user_roles (user_id, role) VALUES ($1,$2)', [user.id, role]);
-    const { token } = await json(request(account, '/api/auth/login', null, { email, password }), 200);
-    return { id: user.id, token };
+    const login = await request(account, '/api/auth/login', null, { email, password });
+    const setCookie = login.headers.get('set-cookie');
+    assert.match(setCookie, /HttpOnly/i);
+    const { token } = await json(login, 200);
+    return { id: user.id, token, cookie: setCookie.split(';')[0] };
   }
   const [farmer, coop, provider, operator, admin, outsider] = await Promise.all([
     actor('owner', 'farmer'), actor('coop', 'coop'), actor('provider', 'provider'), actor('operator', 'operator'),
@@ -88,7 +91,7 @@ test('private Blob evidence and durable SSE enforce participant scope through HT
     cleanup.push(() => controller.abort());
     const res = await fetch(`${base}/api/events/stream?lastEventId=${fallback}`, {
       signal: controller.signal,
-      headers: { ...(cookie ? { Cookie: `agri_session=${who.token}` } : auth(who.token)), ...(last && { 'Last-Event-ID': last }) },
+      headers: { ...(cookie ? { Cookie: who.cookie } : auth(who.token)), ...(last && { 'Last-Event-ID': last }) },
     });
     assert.equal(res.status, 200);
     assert.match(res.headers.get('content-type'), /text\/event-stream/);
@@ -178,7 +181,14 @@ test('private Blob evidence and durable SSE enforce participant scope through HT
   assert.deepEqual(strangerStream.frames.filter(frame => frame.id).map(frame => frame.data.entityId), [roleRequest.id, roleRequest.id]);
   assert.ok(!reconnect.frames.some(frame => frame.data.entityId === roleRequest.id));
   assert.equal((await json(call('/api/notifications/read', farmer, { id: providerFeed.items[0].id }), 200)).unreadCount, before.unreadCount);
-  assert.equal((await json(call('/api/notifications/read', farmer, { all: true }), 200)).unreadCount, 0);
+  for (const context of [{ 'Sec-Fetch-Site': 'cross-site' }, { Origin: 'https://other.example.test' }]) {
+    const denied = await json(call('/api/notifications/read', null, { all: true }, { Cookie: farmer.cookie, ...context }), 403);
+    assert.equal(denied.error.code, 'CROSS_ORIGIN_REQUEST');
+    assert.equal((await feed(farmer)).unreadCount, before.unreadCount);
+  }
+  assert.equal((await json(call('/api/notifications/read', null, { all: true }, {
+    Cookie: farmer.cookie, Origin: base, 'Sec-Fetch-Site': 'same-origin',
+  }), 200)).unreadCount, 0);
   await waitFor(() => reconnect.frames.some(frame => frame.event === 'unread_sync' && frame.data.unreadCount === 0));
   const queryReconnect = await stream(farmer, null, false, catchupIds.at(-1));
   await waitFor(() => queryReconnect.frames.some(frame => frame.event === 'unread_sync'));

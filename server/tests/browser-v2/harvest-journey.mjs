@@ -27,9 +27,9 @@ async function listen(app) {
   return `http://127.0.0.1:${server.address().port}`;
 }
 
-async function api(path, { actor, body } = {}) {
+async function api(path, { actor, body, method = body === undefined ? 'GET' : 'POST' } = {}) {
   const response = await fetch(`${origin}${path}`, {
-    method: body === undefined ? 'GET' : 'POST',
+    method,
     headers: {
       ...(actor ? { Authorization: `Bearer ${actor.token}` } : {}),
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
@@ -366,7 +366,44 @@ try {
   await browser.viewport(390, 844, true);
   await login(farmer, 'nong-dan');
   await browser.hash(`#/nong-dan/F-09?id=${bookingId}`);
-  await browser.waitText('Không dùng để chuyển tiền');
+  await browser.waitText('HTX chưa có kết quả kiểm tra thực địa còn hiệu lực.');
+  assert.equal(await browser.ev('!!document.querySelector("input[name=reference]")'), false);
+  await browser.hash(`#/nong-dan/F-08?id=${bookingId}`);
+  for (const name of ['drained', 'mature', 'intakeReady']) {
+    await browser.waitFor(`!!document.querySelector('input[name=${name}]')`);
+    await browser.click(`input[name=${name}]`);
+  }
+  await browser.clickText('Lưu khai báo ruộng sẵn sàng', 'button');
+  await browser.waitText('Đã khai báo đủ 3 mục');
+
+  await login(operator, 'tho-lai');
+  await browser.hash('#/tho-lai/O-01');
+  await browser.waitText('Chờ HTX kiểm tra');
+  assert.equal(await browser.ev('[...document.querySelectorAll("button")].some(b => b.textContent.trim() === "Bắt đầu ca")'), false);
+
+  await browser.viewport(1440, 900, false);
+  await login(coop, 'htx');
+  await browser.hash(`#/htx/H-04?pkg=${packageId}&id=${bookingId}`);
+  await browser.waitText('Xác nhận Đạt thực địa');
+  await browser.clickText('Xác nhận Đạt thực địa', 'button');
+  await browser.waitText('Lần #1: Đạt');
+  assert.equal((await api(`/api/bookings/${bookingId}/inspections`, { actor: coop })).passed, true);
+
+  await browser.viewport(390, 844, true);
+  await login(farmer, 'nong-dan');
+  await browser.hash(`#/nong-dan/F-09?id=${bookingId}`);
+  await browser.waitText('Chủ máy chưa cung cấp tài khoản nhận cọc.');
+  await api('/api/provider/bank-account', { actor: provider, method: 'PUT', body: {
+    bankBin: '970436', bankName: 'Ngân hàng kiểm thử', accountNumber: '0000000000', accountHolder: 'Fixture kiểm thử',
+  } });
+  await browser.go(`${origin}/v2/?recheck=deposit#/nong-dan/F-09?id=${bookingId}`);
+  await browser.waitText('Hiện mã VietQR');
+  assert.equal((await api(`/api/bookings/${bookingId}/deposit`, { actor: farmer })).expiresAt, null);
+  await browser.clickText('Hiện mã VietQR', 'button');
+  await browser.waitFor('!![...document.images].find(img => img.alt === "Mã VietQR chuyển cọc cho chủ máy" && img.naturalWidth > 0)');
+  await browser.waitText('Hạn cọc');
+  assert.ok((await api(`/api/bookings/${bookingId}/deposit`, { actor: farmer })).expiresAt);
+  assert.equal(await browser.ev('!!document.querySelector("main") && !/[–—]/u.test(document.querySelector("main").innerText)'), true);
   await browser.waitFor('!!document.querySelector("input[name=reference]")');
   await browser.clickText('Báo đã chuyển cọc', 'button');
   await browser.waitText('Nhập mã tham chiếu');
@@ -392,14 +429,6 @@ try {
   await browser.hash(`#/nong-dan/F-09?id=${bookingId}`);
   await browser.waitText('Hai bên đã ghi nhận cọc');
   assert.equal(await browser.ev('!!document.querySelector("input[name=reference]")'), false);
-  await browser.hash(`#/nong-dan/F-08?id=${bookingId}`);
-  for (const name of ['drained', 'mature', 'intakeReady']) {
-    await browser.waitFor(`!!document.querySelector('input[name=${name}]')`);
-    await browser.click(`input[name=${name}]`);
-  }
-  await browser.clickText('Lưu khai báo ruộng sẵn sàng', 'button');
-  await browser.waitText('Đã khai báo đủ 3 mục');
-
   await login(operator, 'tho-lai');
   await browser.hash('#/tho-lai/O-08');
   await browser.waitText('Chưa khai chứng chỉ.');
@@ -413,20 +442,6 @@ try {
   assert.equal(profile.certifications[0].name, 'Chứng chỉ vận hành thử nghiệm');
   assert.equal(profile.certifications[0].verificationStatus, 'UNVERIFIED');
   console.log('V2_WORKFORCE_PROFILE_PASS: operator profile persists through the mounted API');
-  await browser.hash('#/tho-lai/O-01');
-  await browser.waitText('Chờ HTX kiểm tra');
-  assert.equal(await browser.ev('[...document.querySelectorAll("button")].some(b => b.textContent.trim() === "Bắt đầu ca")'), false);
-
-  await browser.viewport(1440, 900, false);
-  await login(coop, 'htx');
-  await browser.hash(`#/htx/H-04?pkg=${packageId}&id=${bookingId}`);
-  await browser.waitText('Xác nhận Đạt thực địa');
-  await browser.clickText('Xác nhận Đạt thực địa', 'button');
-  await browser.waitText('Lần #1: Đạt');
-  assert.equal((await api(`/api/bookings/${bookingId}/inspections`, { actor: coop })).passed, true);
-
-  await browser.viewport(390, 844, true);
-  await login(operator, 'tho-lai');
   await browser.hash('#/tho-lai/O-01');
   await browser.waitText('Sẵn sàng mở ca');
   await browser.clickText('Bắt đầu ca', 'button');

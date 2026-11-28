@@ -19,7 +19,7 @@ Nếu đã cấu hình, cả GET và PUT trả `{ "bankAccount": { "bankBin": ..
 
 ## Lấy mã VietQR
 
-`GET /api/bookings/:id/vietqr` chỉ cho người đứng tên đơn có vai trò `farmer` hoặc `coop`. Đơn ngoài phạm vi trả `404 NOT_FOUND`. Chỉ lấy mã khi người trả mở màn hình chuyển cọc; không lấy trước trong danh sách hoặc lúc tải nền. Lần lấy mã thành công đầu tiên có thể mở hạn giữ chỗ nhưng không tạo báo chuyển tiền. Không còn `vietqrExample` trong API đọc cọc.
+`POST /api/bookings/:id/vietqr` (hoặc `GET` để tương thích) chỉ cho người đứng tên đơn có vai trò `farmer` hoặc `coop`. Đơn ngoài phạm vi trả `404 NOT_FOUND`. Chỉ lấy mã khi người trả yêu cầu hiện mã; không lấy trước trong danh sách hoặc lúc tải nền. Với phiên cookie, yêu cầu khác origin bị từ chối (`403 CROSS_ORIGIN_REQUEST`), kể cả `GET`. `HEAD` không mở hạn cọc. Lần lấy mã thành công đầu tiên có thể mở hạn giữ chỗ nhưng không tạo báo chuyển tiền. Không còn `vietqrExample` trong API đọc cọc.
 
 Phản hồi `200`, `Cache-Control: no-store`:
 
@@ -49,7 +49,7 @@ Số tiền cọc lấy từ báo giá đã lưu của đơn, bằng 10% làm tr
 ## Báo đã chuyển và xác nhận đã nhận
 
 - `GET /api/bookings/:id/deposit`: trả trạng thái cho người đứng tên đơn, HTX phụ trách hoặc chủ máy nhận gói. Không mở hạn cọc. Thêm `expiresAt`, `expiredAt`, `releaseReason` ở cấp phản hồi; các trường chưa có giá trị trả `null`. `permissions.blockReason` báo điều kiện chưa đạt.
-- `POST /api/bookings/:id/deposit`: cùng phạm vi với API lấy mã. Body `{ "reference": "FT123456", "amountVnd": "120000" }`; `reference` bắt buộc, từ 4 đến 64 ký tự thuộc `[A-Za-z0-9._-]`. `amountVnd` không bắt buộc; nếu gửi phải khớp số tiền server tính. Trả `201` khi tạo và `200` khi gửi lại cùng tham chiếu trong hạn. `deposit.status` là `REPORTED` và `confirmedAt` là `null` nếu chủ máy chưa xác nhận. Đây chỉ là lời báo của người chuyển.
+- `POST /api/bookings/:id/deposit`: cùng phạm vi với API lấy mã. Body `{ "reference": "FT123456", "amountVnd": "120000" }`; `reference` bắt buộc, từ 4 đến 64 ký tự thuộc `[A-Za-z0-9._-]`. `amountVnd` không bắt buộc; nếu gửi phải khớp số tiền server tính. Trả `201` khi tạo và `200` khi gửi lại cùng tham chiếu, kể cả sau khi hết hạn hoặc kết quả kiểm tra thực địa thay đổi. Nếu gửi số tiền, số tiền phải khớp báo chuyển đã ghi. `deposit.status` là `REPORTED` và `confirmedAt` là `null` nếu chủ máy chưa xác nhận. Đây chỉ là lời báo của người chuyển.
 - `POST /api/deposits/:id/confirm`: body `{}` hoặc không có body. Chỉ chủ máy được ghi là người nhận mới xác nhận. Trả `200` với `deposit.status: "CONFIRMED"` và `confirmedAt` sau khi xác nhận, kể cả khi gửi lại. Một báo chuyển chưa xác nhận không làm giảm số tiền còn phải trả.
 
 Để lấy mã hoặc báo chuyển, đơn phải được phân công, chủ máy đã nhận gói, HTX đã xác nhận cuộc gọi, người trả khác người nhận, không có tranh chấp đang chặn thanh toán và khoản cọc nằm trong hạn mức. Một số lỗi `409`: `HTX_CALL_NOT_CONFIRMED`, `PROVIDER_BANK_ACCOUNT_REQUIRED`, `DEPOSIT_ALREADY_EXISTS`, `DEPOSIT_AMOUNT_MISMATCH`, `REFERENCE_CONFLICT`, `AMOUNT_EXCEEDS_OUTSTANDING`, `DEPOSIT_EXPIRED`.
@@ -71,6 +71,6 @@ Hai lỗi có `error.message` bằng tiếng Việt. Nếu bị chặn, server k
 
 Đến chính thời điểm `expiresAt`, server chặn phát mã, báo chuyển và xác nhận lần đầu với `409 DEPOSIT_EXPIRED` nếu chưa xác nhận. Một mã đã tải hoặc chụp lại không tự mất hiệu lực trong app ngân hàng. Không chuyển theo mã cũ; nếu đã chuyển mà quá hạn, liên hệ HTX và chủ máy để đối soát ngoài hệ thống.
 
-Chạy `node --env-file-if-exists=.env server/scripts/expire-deposits.js` bằng tài khoản DB `booking_runtime`. Lệnh chạy một lượt, phù hợp để bộ lập lịch gọi định kỳ; không có endpoint công khai, server không tự lập lịch. Lệnh xuất `{ "expiredCount": n }` và trả mã thoát khác 0 nếu lỗi. Job khóa gói và đơn trong cùng giao dịch, bỏ qua hàng đang khóa, kiểm tra lại sự kiện xác nhận rồi mới đánh dấu `expiredAt` và `releaseReason: "DEPOSIT_EXPIRED"`. Chạy lại không sửa lại bản ghi và không sinh thêm sự kiện.
+Chạy `node --env-file-if-exists=.env server/scripts/expire-deposits.js` bằng tài khoản DB `booking_runtime`. Booking-service tự chạy mỗi `DEPOSIT_EXPIRY_SWEEP_INTERVAL_MS` mili giây (mặc định `300000`, đặt `0` để tắt). Các lượt chạy trong cùng tiến trình không chồng nhau. Không có endpoint công khai; dùng lệnh trên để chạy một lượt thủ công. Lệnh xuất `{ "expiredCount": n }` và trả mã thoát khác 0 nếu lỗi. Job khóa gói và đơn trong cùng giao dịch, bỏ qua hàng đang khóa, kiểm tra lại sự kiện xác nhận rồi mới đánh dấu `expiredAt` và `releaseReason: "DEPOSIT_EXPIRED"`. Chạy lại không sửa lại bản ghi và không sinh thêm sự kiện.
 
 Nếu chưa mở ca, chỉ hủy đơn đã hết hạn và chưa có xác nhận. Không đổi trạng thái đơn khác trong cùng gói và chỉ giải phóng lịch máy, thợ lái khi không còn đơn đang phân công trong gói. Nếu ca đã mở, chỉ đóng hạn cọc, không sửa ca hay trạng thái đơn đã chạy. Không bao giờ sửa sổ ghi nhận chuyển cọc hoặc xác nhận đã lưu; báo chuyển hết hạn không còn chiếm hạn mức quyết toán sau khi job xử lý. Migration và cấp lại quyền DB bằng bootstrap phải hoàn tất trước khi chạy server mới hoặc job.

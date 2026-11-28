@@ -1,12 +1,19 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
+import { setTimeout as delay } from 'node:timers/promises';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { after, before, test } from 'node:test';
 import express from 'express';
+import { createAccountApp } from '../../src/account-app.js';
+import { createApp } from '../../src/app.js';
+import { hashPassword } from '../../src/auth/password.js';
 import { createPool } from '../../src/db.js';
 import * as deposits from '../../src/local-service-extensions.js';
 import { createShiftRouter } from '../../src/shifts.js';
 import { migrate } from '../../scripts/migrate.js';
+import { bootstrapDatabase } from '../../scripts/bootstrap-db.js';
 import { seedCatalog } from '../../scripts/seed-catalog.js';
 import { createDisposableDatabase } from '../helpers/test-db.js';
 
@@ -16,6 +23,7 @@ const bank = { bankBin: '970436', bankName: 'Ngân hàng kiểm thử', accountN
 const bankPath = '/api/provider/bank-account';
 const ready = { drained: true, mature: true, intakeReady: true };
 let disposable, pool, server, origin;
+let sweepRoles;
 
 before(async () => {
   disposable = await createDisposableDatabase(process.env.TEST_DATABASE_URL);
@@ -45,6 +53,11 @@ after(async () => {
   if (server) await new Promise((resolve) => server.close(resolve));
   if (pool) await pool.end();
   if (disposable) await disposable.drop();
+  if (sweepRoles) {
+    const admin = createPool(process.env.TEST_DATABASE_URL);
+    try { await admin.query(`DROP ROLE IF EXISTS ${sweepRoles.account}, ${sweepRoles.booking}`); }
+    finally { await admin.end(); }
+  }
 });
 
 async function call(method, path, actor, data) {
@@ -161,6 +174,67 @@ test('VietQR, report and shift share latest current HTX pass gate', async () => 
   assert.equal((await confirm(recorded.body.deposit.id)).body.deposit.status, 'CONFIRMED');
 });
 
+test('cookie-authenticated VietQR rejects forbidden request contexts without opening holds', async (t) => {
+  const { ids: [id] } = await eligible();
+  const secret = 'synthetic-vietqr-internal-service-secret';
+  const sessions = [];
+  t.after(async () => {
+    for (const service of sessions.reverse()) await new Promise((resolve) => service.close(resolve));
+  });
+  async function listen(app) {
+    const service = app.listen(0, '127.0.0.1');
+    sessions.push(service);
+    await once(service, 'listening');
+    return `http://127.0.0.1:${service.address().port}`;
+  }
+  const accountServiceUrl = await listen(createAccountApp({ pool, internalServiceToken: secret, log() {} }));
+  const base = await listen(createApp({ pool, accountServiceUrl, internalServiceToken: secret, log() {} }));
+  const credentials = { email: `${farmer}@example.test`, password: 'synthetic-vietqr-cookie-password' };
+  await pool.query('UPDATE account.users SET password_hash = $2 WHERE id = $1', [farmer, await hashPassword(credentials.password)]);
+  const login = await fetch(`${base}/api/auth/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Prefer: 'session-cookie' },
+    body: JSON.stringify(credentials),
+  });
+  assert.equal(login.status, 200);
+  const setCookie = login.headers.get('set-cookie');
+  assert.match(setCookie, /HttpOnly/i);
+  assert.equal((await login.json()).token, undefined);
+  const cookie = setCookie.split(';')[0];
+  const path = base + bookingPath(id, 'vietqr');
+  const holdCount = async () => (await pool.query('SELECT count(*)::int AS n FROM dispatch.deposit_holds WHERE booking_id = $1', [id])).rows[0].n;
+  const denied = [];
+  for (const headers of [{ 'Sec-Fetch-Site': 'cross-site' }, { Origin: 'https://other.example.test' }]) {
+    const response = await fetch(path, { headers: { Cookie: cookie, ...headers } });
+    denied.push([response.status, (await response.json()).error?.code, await holdCount()]);
+  }
+  assert.deepEqual(denied, [[403, 'CROSS_ORIGIN_REQUEST', 0], [403, 'CROSS_ORIGIN_REQUEST', 0]]);
+  const head = await fetch(path, { method: 'HEAD', headers: { Cookie: cookie } });
+  assert.equal(head.ok, true);
+  assert.equal(await holdCount(), 0);
+  const sameOrigin = await fetch(path, { headers: { Cookie: cookie, Origin: base, 'Sec-Fetch-Site': 'same-origin' } });
+  assert.equal(sameOrigin.status, 200);
+  assert.match((await sameOrigin.json()).vietqr.svg, /^<svg /);
+  assert.equal(await holdCount(), 1);
+});
+
+test('report replay returns the existing deposit after inspection changes and expiry', async () => {
+  const { ids: [id] } = await eligible();
+  const first = await report(id);
+  assert.equal(first.status, 201);
+  assert.equal((await inspect(id, false)).status, 201);
+  assert.equal((await report(id)).status, 200);
+  await pool.query("UPDATE dispatch.deposit_holds SET deposit_expires_at = now() - interval '1 second' WHERE booking_id = $1", [id]);
+  assert.deepEqual(await deposits.expireOverdueDeposits(pool), [id]);
+  const retry = await report(id);
+  assert.equal(retry.status, 200);
+  assert.equal(retry.body.deposit.id, first.body.deposit.id);
+  assert.equal(retry.body.deposit.status, 'EXPIRED');
+  assert.deepEqual(retry.body.deposit.events.map(({ eventType }) => eventType), ['DEPOSIT_REPORTED']);
+  await expectError('POST', bookingPath(id, 'deposit'), farmer, 409, 'DEPOSIT_EXPIRED', { reference: 'OTHER-DEPOSIT' });
+  await expectError('POST', bookingPath(id, 'deposit'), otherProvider, 403, 'FORBIDDEN', { reference: 'TEST-DEPOSIT' });
+  await expectError('POST', bookingPath(id, 'deposit'), farmer, 409, 'DEPOSIT_AMOUNT_MISMATCH', { reference: 'TEST-DEPOSIT', amountVnd: '1' });
+});
+
 test('expiry cancels only due unconfirmed holds, once, without releasing live siblings', async () => {
   const { pkg, ids: [due, paid, live] } = await eligible(3);
   const solo = (await eligible()).ids[0];
@@ -221,4 +295,46 @@ test('maintenance skips booking lock held by a recipient; overdue confirmation c
   assert.equal(receipt.body.error.code, 'DEPOSIT_EXPIRED');
   if (!swept.includes(overdue)) assert.deepEqual(await deposits.expireOverdueDeposits(pool), [overdue]);
   assert.equal((await pool.query("SELECT count(*)::int AS n FROM dispatch.deposit_events WHERE deposit_id = $1 AND event_type = 'DEPOSIT_CONFIRMED'", [old.deposit.id])).rows[0].n, 0);
+});
+
+
+test('booking server expires overdue holds on a timer as booking_runtime and shuts down', { timeout: 10000 }, async (t) => {
+  const { ids: [id], pkg } = await eligible();
+  assert.equal((await qr(id)).status, 200);
+  await pool.query("UPDATE dispatch.deposit_holds SET deposit_expires_at = now() - interval '1 second' WHERE booking_id = $1", [id]);
+  const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
+  sweepRoles = { account: `sweep_acct_${suffix}`, booking: `sweep_book_${suffix}` };
+  const passwords = { account: randomUUID(), booking: randomUUID() };
+  await bootstrapDatabase(pool, { roles: sweepRoles, passwords });
+  const runtimeUrl = new URL(disposable.url);
+  runtimeUrl.username = sweepRoles.booking;
+  runtimeUrl.password = passwords.booking;
+  const probe = createServer().listen(0, '127.0.0.1');
+  await once(probe, 'listening');
+  const port = probe.address().port;
+  await new Promise(resolve => probe.close(resolve));
+  const proc = spawn(process.execPath, ['server/src/server.js'], {
+    env: { PORT: String(port), DATABASE_URL: runtimeUrl.href, ACCOUNT_SERVICE_URL: origin,
+      INTERNAL_SERVICE_TOKEN: 'synthetic-expiry-internal-service-secret', DEPOSIT_EXPIRY_SWEEP_INTERVAL_MS: '30' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const stopped = once(proc, 'close');
+  t.after(async () => {
+    proc.kill('SIGKILL');
+    await stopped;
+  });
+  let logs = '';
+  proc.stdout.on('data', chunk => { logs += chunk; });
+  proc.stderr.on('data', chunk => { logs += chunk; });
+  const cutoff = Date.now() + 4000;
+  while (Date.now() < cutoff && !(await pool.query('SELECT deposit_expired_at FROM dispatch.deposit_holds WHERE booking_id = $1', [id])).rows[0].deposit_expired_at) {
+    assert.equal(proc.exitCode, null, logs);
+    await delay(30);
+  }
+  assert.equal((await pool.query('SELECT state FROM dispatch.bookings WHERE id = $1', [id])).rows[0].state, 'CANCELLED', logs);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM dispatch.allocations WHERE package_id = $1 AND released_at IS NULL', [pkg])).rows[0].n, 0);
+  await delay(100); // Allow multiple more ticks, which must not create duplicate events.
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM dispatch.booking_events WHERE booking_id = $1 AND event_type = 'BOOKING_DEPOSIT_EXPIRED'", [id])).rows[0].n, 1);
+  proc.kill('SIGTERM');
+  assert.deepEqual(await stopped, [0, null], logs);
 });

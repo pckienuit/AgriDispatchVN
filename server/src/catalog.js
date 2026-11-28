@@ -118,7 +118,7 @@ async function withFieldConsent(pool, actorId, input, save) {
 function fieldParams(input) {
   const shape = input.boundaryGeojson;
   return [input.name, input.locality, input.areaM2, input.provinceCode, input.communeCode,
-    shape ? JSON.stringify(shape) : null, shape ? JSON.stringify(shape.coordinates[0]) : null,
+    shape ? JSON.stringify({ type: 'Polygon', coordinates: shape.coordinates }) : null, shape ? JSON.stringify(shape.coordinates[0]) : null,
     input.metrics?.centroid.lat, input.metrics?.centroid.lng, input.metrics?.calculatedAreaM2];
 }
 
@@ -367,6 +367,7 @@ function serviceDto(row) {
 }
 
 function fieldDto(row) {
+  const shape = row.boundary_geojson;
   return {
     id: row.id,
     name: row.name,
@@ -375,7 +376,7 @@ function fieldDto(row) {
     ...areaInLocalUnits(row.area_m2),
     provinceCode: row.province_code ?? null,
     communeCode: row.commune_code ?? null,
-    boundaryGeojson: row.boundary_geojson ?? null,
+    boundaryGeojson: shape ? { type: 'Polygon', coordinates: shape.coordinates } : null,
     centroid: Number.isFinite(row.centroid_lat) ? { lat: row.centroid_lat, lng: row.centroid_lng } : null,
     calculatedAreaM2: row.calculated_area_m2 ?? null,
     createdAt: row.created_at.toISOString(),
