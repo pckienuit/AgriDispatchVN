@@ -274,7 +274,25 @@ export async function bootstrapDatabase(pool, { roles = DEFAULT_ROLES, passwords
     await client.query(`GRANT USAGE ON SCHEMA dispatch TO ${qBook}`);
     for (const table of DISPATCH_TABLES) {
       await client.query(`REVOKE ALL ON TABLE dispatch.${qIdent(table)} FROM ${qAcc}, ${qBook}`);
-      await client.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE dispatch.${qIdent(table)} TO ${qBook}`);
+      if (table === 'services') {
+        // Clear column-level grants too, so reruns restore the exact soft-deactivation privileges.
+        const columns = 'id, code, name, price_per_ha_vnd, data_label, active, created_at, updated_at, unit, machine_type, description, created_by_user_id, updated_by_user_id';
+        await client.query(`REVOKE ALL (${columns}) ON TABLE dispatch.services FROM ${qAcc}, ${qBook}`);
+        await client.query(`GRANT SELECT ON TABLE dispatch.services TO ${qBook}`);
+        await client.query(`GRANT INSERT (id, code, name, price_per_ha_vnd, data_label, active, unit, machine_type, description,
+          created_by_user_id, updated_by_user_id), UPDATE (name, price_per_ha_vnd, active, updated_at, unit, description, updated_by_user_id)
+          ON TABLE dispatch.services TO ${qBook}`);
+      } else if (table === 'fields') {
+        const geometry = 'boundary, boundary_geojson, centroid_lat, centroid_lng, calculated_area_m2';
+        const attributes = 'name, locality, area_m2, province_code, commune_code';
+        await client.query(`REVOKE ALL (id, owner_id, created_at, updated_at, access_details, ${attributes}, ${geometry})
+          ON TABLE dispatch.fields FROM ${qAcc}, ${qBook}`);
+        await client.query(`GRANT SELECT ON TABLE dispatch.fields TO ${qBook}`);
+        await client.query(`GRANT INSERT (owner_id, ${attributes}, ${geometry}),
+          UPDATE (${attributes}, ${geometry}, updated_at, access_details) ON TABLE dispatch.fields TO ${qBook}`);
+      } else {
+        await client.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE dispatch.${qIdent(table)} TO ${qBook}`);
+      }
     }
     await client.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA dispatch TO ${qBook}`);
     await client.query(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA dispatch TO ${qBook}`);
