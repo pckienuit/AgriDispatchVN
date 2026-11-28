@@ -13,7 +13,7 @@ export function configuredBlobStore(env) {
   if (inline !== undefined && !['true', 'false'].includes(inline)) throw invalid('Invalid inline thumbnail setting');
   return createBlobStore({accountUrl:env.EVIDENCE_BLOB_ACCOUNT_URL, inlineThumbnails:inline !== 'false',
     inputContainer:env.EVIDENCE_CONTAINER??'evidence',thumbnailContainer:env.THUMBNAIL_CONTAINER??'thumbnails',
-    getToken:createManagedIdentityTokenProvider({endpoint:env.IDENTITY_ENDPOINT,identityHeader:env.IDENTITY_HEADER,clientId:env.AZURE_CLIENT_ID})});
+    getToken:createManagedIdentityTokenProvider({endpoint:env.IDENTITY_ENDPOINT,identityHeader:env.IDENTITY_HEADER,clientId:env.AZURE_CLIENT_ID?.trim()||undefined})});
 }
 const MAX_TIMEOUT_MS = 30000;
 const DEFAULT_TIMEOUT_MS = 10000;

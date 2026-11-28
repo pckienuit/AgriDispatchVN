@@ -3,6 +3,8 @@ import { parsePagination } from './catalog.js';
 
 const CHANNEL = 'dispatch_user_notifications';
 const BATCH = 100;
+const MAX_STREAMS_PER_USER = 5;
+const MAX_STREAMS_GLOBAL = 100;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = (status, code) => Object.assign(new Error(code), { status, code });
 
@@ -22,6 +24,7 @@ const unreadSql = `SELECT count(*)::int FROM dispatch.user_notifications WHERE r
 // polling closes gaps during LISTEN setup/reconnect. All event and count reads are recipient-scoped.
 function listener(pool) {
   const subscribers = new Map();
+  let totalStreams = 0;
   let client;
   let opening = false;
   function drop() {
@@ -54,11 +57,15 @@ function listener(pool) {
     ensure,
     subscribe(id, wake) {
       const callbacks = subscribers.get(id) ?? new Set();
+      if (callbacks.size >= MAX_STREAMS_PER_USER || totalStreams >= MAX_STREAMS_GLOBAL) {
+        throw fail(429, 'TOO_MANY_STREAMS');
+      }
       callbacks.add(wake);
       subscribers.set(id, callbacks);
+      totalStreams++;
       void ensure();
       return () => {
-        callbacks.delete(wake);
+        if (callbacks.delete(wake)) totalStreams = Math.max(0, totalStreams - 1);
         if (!callbacks.size) subscribers.delete(id);
         if (!subscribers.size && !opening) drop();
       };
@@ -138,7 +145,7 @@ export function createRealtimeRouter({ pool, authenticate }) {
       res.end();
     }
     const unsubscribe = listeners.subscribe(id, wake);
-    const poll = globalThis.setInterval(() => { void listeners.ensure(); void wake(); }, 2000);
+    const poll = globalThis.setInterval(() => { void listeners.ensure(); void wake(); }, 5000);
     const heartbeat = globalThis.setInterval(() => write(': keepalive\n\n'), 20000);
     // Limit stale access after logout/revocation; every reconnect introspects the credential again.
     const expiresIn = req.sessionExpiresAt ? Date.parse(req.sessionExpiresAt) - Date.now() : Infinity;

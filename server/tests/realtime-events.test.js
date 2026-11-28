@@ -82,3 +82,40 @@ test('SSE keepalive runs every 20 seconds and stops at disconnect', async t => {
   assert.equal(frames.filter(frame => frame === ': keepalive\n\n').length, 1);
   assert.equal(queries.length, before);
 });
+
+test('SSE enforces per-user stream cap and frees slot on disconnect', async () => {
+  const { EventEmitter } = await import('node:events');
+  const { createRealtimeRouter } = await import('../src/realtime-events.js');
+  const router = createRealtimeRouter({
+    pool: { options: { max: 1 }, async query(sql) { return { rows: sql.includes('unreadCount') ? [{ unreadCount: 0 }] : [] }; } },
+    authenticate() {},
+  });
+  const work = router.stack.find(layer => layer.route.path === '/api/events/stream').route.stack.at(-1).handle;
+  const openRes = () => {
+    const out = { statusCode: 200, body: null };
+    return Object.assign(new EventEmitter(), {
+      set() {},
+      flushHeaders() {},
+      end() {},
+      write() { return true; },
+      status(code) { out.statusCode = code; return this; },
+      json(body) { out.body = body; return this; },
+      out,
+    });
+  };
+  const streams = [];
+  for (let i = 0; i < 5; i++) {
+    const res = openRes();
+    streams.push(res);
+    await work({ actor: { id: userId }, get() {}, query: {}, on() {} }, res, assert.fail);
+  }
+  const sixth = openRes();
+  await work({ actor: { id: userId }, get() {}, query: {}, on() {} }, sixth, assert.fail);
+  assert.equal(sixth.out.statusCode, 429);
+  assert.equal(sixth.out.body.error.code, 'TOO_MANY_STREAMS');
+  streams[0].emit('close');
+  const replacement = openRes();
+  await work({ actor: { id: userId }, get() {}, query: {}, on() {} }, replacement, assert.fail);
+  assert.equal(replacement.out.statusCode, 200);
+  for (const s of [...streams.slice(1), replacement]) s.emit('close');
+});
