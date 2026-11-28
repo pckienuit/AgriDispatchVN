@@ -1,0 +1,149 @@
+/* CSS riêng của màn hình HTX điều phối. Dùng token trong ../styles.css, tiền tố lớp .htx- để không đụng file khác. */
+@media (min-width: 761px) {
+  .htx { --gap: 12px; }
+  .htx .card { padding: 16px; }
+  .htx .table td, .htx .table th { padding: 8px 12px; }
+}
+.htx .table td { vertical-align: middle; }
+.htx .kv { gap: 8px 16px; }
+.htx .banner { padding: 12px 16px; }
+.htx .empty { padding: 20px 16px; }
+.htx-block { display: block; }
+.htx-warn { color: var(--fb-warn-ink); font-weight: 500; }
+
+/* Bố cục máy tính */
+.htx-grid { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: var(--gap); align-items: start; }
+.htx-grid--map { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(480px, 1fr); gap: var(--gap); align-items: start; }
+.htx-grid--side { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: var(--gap); align-items: start; }
+.htx-cols { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: var(--gap); align-items: start; }
+.htx-draw { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr); gap: var(--gap); align-items: start; }
+
+@media (max-width: 1100px) {
+  .htx-grid, .htx-grid--map, .htx-grid--side, .htx-cols, .htx-draw {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.htx-tags { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.htx-chips-line { display: flex; }
+
+/* Việc cần xử lý, thông báo, phạm vi xã */
+.htx-tasks { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-frame); overflow: hidden; }
+.htx-task { display: grid; grid-template-columns: 28px minmax(0, 1fr) 20px; gap: 12px; align-items: center; padding: 8px 12px; color: inherit; text-decoration: none; border-bottom: 1px solid var(--line); border-left: 4px solid var(--line-strong); background: var(--surface); }
+.htx-task:last-child { border-bottom: 0; }
+.htx-task { transition: background-color var(--motion-fast); }
+.htx-task:hover { background: var(--surface-2); }
+.htx-task > .ph:first-child { font-size: 20px; }
+.htx-task--error { border-left-color: var(--fb-danger-ink); }
+.htx-task--error > .ph:first-child { color: var(--fb-danger-ink); }
+.htx-task--warn { border-left-color: var(--fb-warn-ink); }
+.htx-task--warn > .ph:first-child { color: var(--fb-warn-ink); }
+.htx-task--info { border-left-color: var(--fb-info-ink); }
+.htx-task__main { display: flex; flex-direction: column; min-width: 0; }
+.htx-task__title { font-weight: 600; }
+.htx-feed { display: flex; align-items: center; gap: 8px; width: 100%; }
+.htx-zones { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.htx-zones li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.htx-zones .small { margin-left: auto; }
+.htx-lookup { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+.htx-lookup .field__hint { grid-column: 1 / -1; }
+.htx-states { display: flex; flex-direction: column; gap: 8px; }
+.htx-states__row { display: grid; grid-template-columns: 160px minmax(0, 1fr) 32px 72px; gap: 8px; align-items: center; }
+.htx-states__row--zero .badge { background: var(--surface-2); color: var(--ink-2); }
+.htx-states__row--zero .num { color: var(--ink-2); }
+.htx-states__row .num { text-align: right; }
+.htx-bar { display: block; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; border: 1px solid var(--line); }
+.htx-bar > i { display: block; height: 100%; background: var(--ink-2); }
+@media (max-width: 760px) {
+  .htx-states__row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+  }
+  .htx-states__row .htx-bar {
+    display: none;
+  }
+}
+
+/* Bàn gom cụm */
+.htx-check-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.htx-check { width: 24px; height: 24px; accent-color: var(--accent); margin: 0; }
+.htx-meter { padding: 2px 0 16px; }
+.htx-meter__bar { position: relative; height: 12px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line-ctl); }
+.htx-meter__fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; }
+.htx-meter__fill--ok { background: var(--accent); }
+.htx-meter__fill--idle { background: var(--meter-idle); }
+.htx-meter__fill--stop { background: var(--tm-stop-ink); }
+.htx-meter__tick { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); }
+.htx-meter__marks { position: relative; height: 20px; font-size: var(--fs-sm); color: var(--ink-2); }
+.htx-meter__marks span { position: absolute; top: 0; transform: translateX(-50%); }
+@media (max-width: 760px) {
+  .htx-meter__marks { font-size: var(--fs); height: 24px; }
+}
+.htx-sug { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--r-ctl); background: var(--surface); }
+.htx-sug--on { border-color: var(--ink); background: var(--surface-2); }
+.htx-bad { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
+.htx-member { display: inline-flex; align-items: center; gap: 4px; padding: 0 4px 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r-tag); background: var(--surface); font-weight: 600; }
+.htx-member .btn { min-height: 32px; padding: 0 8px; }
+
+/* Hàng chờ đơn, vẽ ranh */
+.htx-wait { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--r-ctl); background: var(--surface); }
+.htx-wait > .ph { font-size: 20px; color: var(--fb-warn-ink); }
+
+/* Thẩm định thực địa */
+.htx-shots { display: flex; flex-wrap: wrap; gap: 8px; }
+.htx-shot { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 84px; height: 64px; border: 1px dashed var(--line-strong); border-radius: var(--r-ctl); background: var(--surface-2); color: var(--ink-2); }
+.htx-shot > .ph { font-size: 20px; }
+.htx-qlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.htx-qa { display: flex; align-items: flex-start; gap: 8px; }
+.htx-qa > .ph { font-size: 20px; margin-top: 1px; flex: none; }
+.htx-cash { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; max-width: 260px; }
+
+/* Giám sát, hòa giải */
+.htx-pg { display: grid; grid-template-columns: minmax(80px, 1fr) 44px; gap: 8px; align-items: center; min-width: 140px; }
+.htx-live-legend { display: flex; flex-wrap: wrap; gap: 8px; }
+.htx-sig { display: flex; flex-direction: column; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.htx-sig:last-child { border-bottom: 0; }
+.htx-sig__in { display: flex; align-items: flex-end; gap: 8px; }
+.htx-sig__in .field { flex: 1; min-width: 0; }
+
+.htx-states__row .badge { justify-self: start; }
+.htx .nowrap { white-space: nowrap; }
+
+/* Thu gọn khối chi tiết */
+.htx summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+/* Liên kết số điện thoại chuẩn vùng chạm 44px trên màn chạm */
+.htx-tel {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--ctl-h-sm, 44px);
+  min-width: 44px;
+  color: inherit;
+  text-decoration: underline;
+}
+
+/* Công cụ vẽ bản đồ trên màn hẹp */
+@media (max-width: 760px), (pointer: coarse) {
+  .leaflet-draw-toolbar a {
+    width: 44px !important;
+    height: 44px !important;
+    line-height: 44px !important;
+  }
+  .htx .map {
+    height: 44dvh !important;
+    --map-h: 44dvh;
+  }
+}

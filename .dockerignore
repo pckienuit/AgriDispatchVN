@@ -5,3 +5,14 @@ node_modules
 .env.*
 coverage
 *.log
+**/.terraform
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/*.tfvars
+**/*.tfvars.json
+**/backend.hcl
+**/kubeconfig*
+system-results
+.ci-ephemeral
+build-manifest.json

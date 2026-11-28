@@ -1,24 +1,74 @@
 import express from 'express';
+import { rejectNullBytes } from './reject-null-bytes.js';
 import { fileURLToPath } from 'node:url';
+import { createCatalogRouter } from './catalog.js';
+import { createFieldDetailsRouter } from './field-details.js';
+import { createAccountAuth } from './service-auth.js';
+import { createBookingRouter } from './booking.js';
+import { createAccountGateway } from './account-gateway.js';
+import { createRecruitmentRouter } from './recruitment.js';
+import { createWorkforceRouter } from './workforce.js';
+import { createDispatchRouter } from './dispatch.js';
+import { createSchedulingRouter } from './scheduling.js';
+import { createShiftRouter } from './shifts.js';
+import { createAcceptanceRouter } from './acceptance.js';
+import { createDisputeRouter } from './disputes.js';
+import { createRemedyRouter } from './remedies.js';
+import { createActivityRouter } from './activity.js';
+import { createRequestContext } from './observability.js';
+import { createPostponementRouter } from './postponement.js';
+import { createEvidenceRouter } from './evidence.js';
+import { createCoopTerritoriesRouter } from './coop-territories.js';
+import { createLocalServiceExtensionsRouter } from './local-service-extensions.js';
+import { createPlatformControlsRouter } from './platform-controls.js';
+const { AbortSignal } = globalThis;
 
-export function createApp({ pool }) {
+export function createApp({ pool, accountServiceUrl, internalServiceToken, trustedProxyHops = 0, trustedProxyCidrs = null, buildSha = 'development', log, evidenceStore = null, servicesCacheMs = 0 }) {
   const app = express();
   app.disable('x-powered-by');
+  app.use(createRequestContext({serviceName:'booking-service',buildSha,log}));
   app.use((req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');
     next();
   });
   app.use(express.json({ limit: '64kb' }));
+  app.use(rejectNullBytes);
   app.get('/health', (req, res) => res.set('Cache-Control', 'no-store').json({ status: 'ok' }));
   app.get('/ready', async (req, res) => {
     res.set('Cache-Control', 'no-store');
     try {
       await pool.query('SELECT 1');
+      if (accountServiceUrl) {
+        const identity = await fetch(new URL('/ready', accountServiceUrl), { redirect: 'error', signal: AbortSignal.timeout(2000) });
+        await identity.body?.cancel();
+        if (identity.status !== 200) throw new Error('Identity dependency unavailable');
+      }
       res.json({ status: 'ready' });
     } catch {
       res.status(503).json({ status: 'unavailable' });
     }
   });
+  if (accountServiceUrl !== undefined || internalServiceToken !== undefined) {
+    const authenticate = createAccountAuth({ accountServiceUrl, internalServiceToken });
+    app.use(createAccountGateway({ accountServiceUrl, internalServiceToken, trustedProxyHops, trustedProxyCidrs }));
+    app.use(createCatalogRouter({ pool, authenticate, servicesCacheMs }));
+    app.use(createFieldDetailsRouter({ pool, authenticate }));
+    app.use(createBookingRouter({ pool, authenticate }));
+    app.use(createRecruitmentRouter({ pool, authenticate }));
+    app.use(createWorkforceRouter({ pool, authenticate }));
+    app.use(createDispatchRouter({ pool, authenticate }));
+    app.use(createSchedulingRouter({ pool, authenticate }));
+    app.use(createShiftRouter({ pool, authenticate }));
+    app.use(createAcceptanceRouter({ pool, authenticate }));
+    app.use(createDisputeRouter({ pool, authenticate }));
+    app.use(createRemedyRouter({ pool, authenticate }));
+    app.use(createActivityRouter({ pool, authenticate }));
+    app.use(createPostponementRouter({ pool, authenticate }));
+    app.use(createEvidenceRouter({ pool, authenticate, store:evidenceStore }));
+    app.use(createCoopTerritoriesRouter({ pool, authenticate }));
+    app.use(createLocalServiceExtensionsRouter({ pool, authenticate }));
+    app.use(createPlatformControlsRouter({ pool, authenticate }));
+  }
   app.use(express.static(fileURLToPath(new URL('../../web/', import.meta.url)), { dotfiles: 'deny' }));
   app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND' } }));
   app.use((error, req, res, next) => {

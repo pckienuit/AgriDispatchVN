@@ -2,7 +2,7 @@
 
 ## Tổng quan
 
-Một process Node.js phục vụ HTTP bằng Express 5 và kết nối PostgreSQL 17 qua pool của `pg`. Ở giai đoạn scaffold chưa có service thứ hai, queue hay worker.
+Hai process Node.js dùng Express 5 và PostgreSQL 17 qua `pg`: account-service giữ tài khoản/session, booking-service giữ danh mục, thửa, máy, đơn và tuyển thợ. Booking-service gọi HTTP tới account-service để xác minh token; khi đối tác lỗi, thao tác được bảo vệ trả 503 thay vì bỏ qua xác thực. Chưa có queue hoặc Function chạy cloud.
 
 ## Thành phần
 
@@ -13,7 +13,7 @@ Một process Node.js phục vụ HTTP bằng Express 5 và kết nối PostgreS
 | `server/src/db.js` | `createPool` tạo pool PostgreSQL |
 | `server/src/server.js` | Điểm vào: khởi động HTTP và tắt êm |
 | `server/scripts/migrate.js` | Runner migration |
-| `db/migrations/` | File migration SQL, hiện chưa có file nghiệp vụ |
+| `db/migrations/` | Migration tài khoản, catalog, booking và tuyển thợ theo thứ tự |
 | `web/` | Tài sản tĩnh; chưa có giao diện |
 | `infra/Dockerfile`, `infra/compose.yaml` | Image container và stack chạy local |
 
@@ -38,5 +38,5 @@ Một process Node.js phục vụ HTTP bằng Express 5 và kết nối PostgreS
 
 ## Ranh giới hiện tại
 
-- Chưa có xác thực, dữ liệu nhạy cảm hay nghiệp vụ.
+- Xác thực, catalog, booking và tuyển thợ đã có API/test PostgreSQL local. Bản UI và các luồng điều phối/ca/khiếu nại đang triển khai. Không coi API local là dịch vụ production đã nghiệm thu.
 - Chưa có production readiness. Kế hoạch cloud xem [cloud.md](cloud.md).

@@ -32,9 +32,13 @@ test('DB outage returns 503 without leaking internal details', async (t) => {
   assert.equal(response.status, 503);
   assert.equal((await response.text()).includes('private-db-host'), false);
 });
-test('unimplemented routes and frontend return JSON 404', async (t) => {
+test('frontend loads while unconfigured business routes and private files stay unavailable', async (t) => {
   const url = await serve(t, {});
-  for (const path of ['/', '/api/bookings', '/.env', '/../package.json']) {
+  const home = await fetch(url + '/');
+  assert.equal(home.status, 200);
+  assert.match(home.headers.get('content-type'), /text\/html/);
+  assert.match(await home.text(), /<html lang="vi"/);
+  for (const path of ['/api/bookings', '/.env', '/../package.json']) {
     const response = await fetch(`${url}${path}`);
     assert.equal(response.status, 404);
     assert.deepEqual(await response.json(), { error: { code: 'NOT_FOUND' } });

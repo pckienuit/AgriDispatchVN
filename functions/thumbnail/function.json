@@ -1,0 +1,11 @@
+{
+  "scriptFile": "../functions/thumbnail/index.cjs",
+  "bindings": [{
+    "name": "image",
+    "type": "blobTrigger",
+    "direction": "in",
+    "dataType": "binary",
+    "path": "%EVIDENCE_CONTAINER%/{caseId}/{evidenceId}/{sha}",
+    "connection": "EvidenceSource"
+  }]
+}

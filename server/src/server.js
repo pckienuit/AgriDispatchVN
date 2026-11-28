@@ -1,11 +1,12 @@
 import { createApp } from './app.js';
-import { readConfig } from './config.js';
+import { readBookingConfig } from './config.js';
 import { createPool } from './db.js';
+import { configuredEvidenceStore } from './local-evidence-store.js';
 
 try {
-  const config = readConfig();
+  const config = readBookingConfig();
   const pool = createPool(config.databaseUrl);
-  const server = createApp({ pool }).listen(config.port, '0.0.0.0');
+  const server = createApp({ pool, accountServiceUrl: config.accountServiceUrl, internalServiceToken: config.internalServiceToken, trustedProxyHops: config.trustedProxyHops, trustedProxyCidrs: config.trustedProxyCidrs, servicesCacheMs: config.servicesCacheMs, buildSha:process.env.BUILD_SHA ?? 'development', evidenceStore:configuredEvidenceStore(process.env) }).listen(config.port, '0.0.0.0');
   server.once('listening', () => {
     console.log(`Listening on port ${config.port}`);
   });

@@ -7,3 +7,16 @@ coverage/
 .DS_Store
 .idea/
 .vscode/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+kubeconfig*
+*-kubeconfig
+system-results/
+backend.hcl
+.ci-ephemeral/
+build-manifest.json
