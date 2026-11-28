@@ -68,6 +68,7 @@ export const DISPATCH_TABLES = Object.freeze([
   'platform_control_events',
   'commune_territories',
   'coop_territory_audit',
+  'user_notifications',
 ]);
 
 const ROLE_NAME = /^[a-z][a-z0-9_]{0,62}$/;
@@ -294,7 +295,7 @@ export async function bootstrapDatabase(pool, { roles = DEFAULT_ROLES, passwords
         await client.query(`GRANT INSERT (owner_id, ${attributes}, ${geometry}),
           UPDATE (${attributes}, ${geometry}, updated_at, access_details) ON TABLE dispatch.fields TO ${qBook}`);
       } else {
-        const privileges = ['provider_bank_accounts', 'deposit_holds'].includes(table) ? 'SELECT, INSERT, UPDATE' : 'SELECT, INSERT, UPDATE, DELETE';
+        const privileges = ['provider_bank_accounts', 'deposit_holds', 'user_notifications'].includes(table) ? 'SELECT, INSERT, UPDATE' : 'SELECT, INSERT, UPDATE, DELETE';
         await client.query(`GRANT ${privileges} ON TABLE dispatch.${qIdent(table)} TO ${qBook}`);
       }
     }

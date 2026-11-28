@@ -19,6 +19,7 @@ import { createActivityRouter } from './activity.js';
 import { createRequestContext } from './observability.js';
 import { createPostponementRouter } from './postponement.js';
 import { createEvidenceRouter } from './evidence.js';
+import { createRealtimeRouter } from './realtime-events.js';
 import { createCoopTerritoriesRouter } from './coop-territories.js';
 import { createLocalServiceExtensionsRouter } from './local-service-extensions.js';
 import { createPlatformControlsRouter } from './platform-controls.js';
@@ -72,6 +73,7 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken, trust
     app.use(createActivityRouter({ pool, authenticate }));
     app.use(createPostponementRouter({ pool, authenticate }));
     app.use(createEvidenceRouter({ pool, authenticate, store:evidenceStore }));
+    app.use(createRealtimeRouter({ pool, authenticate }));
     app.use(createCoopTerritoriesRouter({ pool, authenticate }));
     app.use(createLocalServiceExtensionsRouter({ pool, authenticate, depositExpiryHours }));
     app.use(createPlatformControlsRouter({ pool, authenticate }));
