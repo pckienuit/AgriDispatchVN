@@ -41,7 +41,7 @@ function assertKnownKeys(body, allowed) {
 
 function boundedText(value, field, max) {
   const text = typeof value === 'string' ? value.trim() : '';
-  if (text === '' || [...text].length > max) throw new ApiError(400, 'VALIDATION_FAILED', { field });
+  if (text === '' || [...text].length > max || text.includes('\0')) throw new ApiError(400, 'VALIDATION_FAILED', { field });
   return text;
 }
 

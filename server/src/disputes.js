@@ -58,7 +58,7 @@ function plainBody(input, keys) {
 function boundedText(value) {
   if (typeof value !== 'string') throw fail(400, 'VALIDATION_FAILED');
   const trimmed = value.trim();
-  if (!trimmed || [...trimmed].length > MAX_TEXT) throw fail(400, 'VALIDATION_FAILED');
+  if (!trimmed || [...trimmed].length > MAX_TEXT || trimmed.includes('\0')) throw fail(400, 'VALIDATION_FAILED');
   return trimmed;
 }
 

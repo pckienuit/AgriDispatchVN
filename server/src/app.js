@@ -1,4 +1,5 @@
 import express from 'express';
+import { rejectNullBytes } from './reject-null-bytes.js';
 import { fileURLToPath } from 'node:url';
 import { createCatalogRouter } from './catalog.js';
 import { createFieldDetailsRouter } from './field-details.js';
@@ -31,6 +32,7 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken, trust
     next();
   });
   app.use(express.json({ limit: '64kb' }));
+  app.use(rejectNullBytes);
   app.get('/health', (req, res) => res.set('Cache-Control', 'no-store').json({ status: 'ok' }));
   app.get('/ready', async (req, res) => {
     res.set('Cache-Control', 'no-store');
