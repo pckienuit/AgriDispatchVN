@@ -49,7 +49,9 @@ export function parseHash(hash) {
   const params = {};
   if (q >= 0) {
     for (const [key, value] of new URLSearchParams(raw.slice(q + 1))) {
-      if (PARAM_KEY.test(key) && value.length <= 200 && !Object.hasOwn(params, key)) params[key] = value;
+      // Login carries an already serialized in-app URL, not a single field value.
+      const limit = key === 'tiep' ? 2048 : 200;
+      if (PARAM_KEY.test(key) && value.length <= limit && !Object.hasOwn(params, key)) params[key] = value;
     }
   }
   const parts = path.split('/').filter(Boolean);

@@ -28,6 +28,22 @@ curl http://127.0.0.1:3000/ready
 
 Trước khi chạy Compose, đặt `POSTGRES_PASSWORD` local và `INTERNAL_SERVICE_TOKEN` ngẫu nhiên ít nhất 32 ký tự trong môi trường riêng; không commit hoặc dùng credential mẫu cho cloud. `/` phục vụ UI; nghiệp vụ cần cả account-service và DB đã migration. Seed danh mục synthetic bằng bước riêng trong [hướng dẫn phát triển](docs/development.md). Không tự tạo admin thật; quyền mẫu được cấp riêng trong fixture kiểm thử.
 
+## Bài thực hành 5: Kiểm thử (IE104)
+
+Cài dependencies bằng `npm ci`, chuẩn bị Node.js 26, Chromium (mặc định tìm `chromium` trên `PATH`, hoặc đặt `CHROMIUM_BIN`), và Docker local đang chạy với quyền gọi `docker`. Sau đó chạy toàn bộ bằng một lệnh:
+
+```bash
+npm run test:btth5
+```
+
+- `tests/unit/`: 9 ca logic UI/API, không cần mạng hay PostgreSQL.
+- `tests/integration/`: 6 ca HTTP qua gateway, account-service và PostgreSQL thật.
+- `tests/e2e/`: 3 ca UI v2 bằng Chromium/CDP trên cùng stack thật; mỗi ca dùng profile trình duyệt riêng.
+
+Runner mặc định tạo PostgreSQL 17 tạm bằng ảnh `postgres:17-alpine`, dùng ổ `tmpfs` và cổng loopback ngẫu nhiên. Docker có thể cần mạng để tải ảnh lần đầu. Nếu đã có PostgreSQL test, đặt `TEST_DATABASE_URL` trong môi trường trỏ tới DB riêng tên `*_test` trên loopback, tài khoản có quyền `CREATEDB`. Runner không đọc `.env` hay `DATABASE_URL` của dev. Mỗi ca integration/E2E tự tạo và migrate DB ngẫu nhiên, mở hai cổng HTTP tạm, rồi đóng server, pool và xóa DB của ca. Runner xóa container do nó tạo khi kết thúc; không xóa DB gốc do người chạy cấu hình.
+
+[Kế hoạch](docs/TEST_PLAN.md) · [Bảng ca kiểm thử](docs/TEST_CASES.md) · [Log và coverage](docs/test-results.txt) · [Lỗi ghi nhận](docs/BUGS.md)
+
 ## Tài liệu
 
 - [Kiến trúc](docs/architecture.md)

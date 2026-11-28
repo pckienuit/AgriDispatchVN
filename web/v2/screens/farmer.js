@@ -943,11 +943,14 @@ async function bookServiceScreen(ctx) {
     ? ctx.params.service.toLowerCase()
     : (isUuid(mem.bookingDraft.serviceId) && services.some((s) => s.id === mem.bookingDraft.serviceId) ? mem.bookingDraft.serviceId : services[0].id);
 
-  const startLocalVal = mem.bookingDraft.startLocal || defaults.startLocal;
-  const endLocalVal = mem.bookingDraft.endLocal || defaults.endLocal;
-  const varietyInput = ui.input({ name: 'cropVariety', value: mem.bookingDraft.cropVariety || '', maxlength: 80 });
-  const sowDateInput = ui.input({ name: 'sowDate', value: mem.bookingDraft.sowDate || '', type: 'date' });
-  const harvestDateInput = ui.input({ name: 'harvestDate', value: mem.bookingDraft.harvestDate || '', type: 'date' });
+  const startMs = Date.parse(ctx.params.start);
+  const endMs = Date.parse(ctx.params.end);
+  const startLocalVal = Number.isFinite(startMs) ? localInputFromMs(startMs) : mem.bookingDraft.startLocal || defaults.startLocal;
+  const endLocalVal = Number.isFinite(endMs) ? localInputFromMs(endMs) : mem.bookingDraft.endLocal || defaults.endLocal;
+  const crop = cropFactsFromParams(ctx.params);
+  const varietyInput = ui.input({ name: 'cropVariety', value: crop?.cropVariety ?? mem.bookingDraft.cropVariety ?? '', maxlength: 80 });
+  const sowDateInput = ui.input({ name: 'sowDate', value: crop?.sowDate ?? mem.bookingDraft.sowDate ?? '', type: 'date' });
+  const harvestDateInput = ui.input({ name: 'harvestDate', value: crop?.harvestDate ?? mem.bookingDraft.harvestDate ?? '', type: 'date' });
   const harvestFields = h('div', { class: 'stack-sm' },
     ui.field({ label: 'Giống lúa (không bắt buộc)', input: varietyInput }),
     ui.field({ label: 'Ngày sạ (không bắt buộc)', input: sowDateInput }),
@@ -1237,7 +1240,10 @@ async function quoteConfirmScreen(ctx) {
     feedbackBox,
     h('div', { class: 'stack-sm' },
       submitBtn,
-      ui.button({ label: 'Sửa thông tin đặt dịch vụ', kind: 'secondary', block: true, href: fUrl('F-05') })),
+      ui.button({ label: 'Sửa thông tin đặt dịch vụ', kind: 'secondary', block: true, href: fUrl('F-05', {
+        field: field.id, service: service.id, start: payload.startAt, end: payload.endAt,
+        crop: crop.cropVariety, sow: crop.sowDate, harvest: crop.harvestDate,
+      }) })),
   );
 }
 
