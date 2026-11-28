@@ -60,6 +60,8 @@ test('index.html shell is Vietnamese, responsive, and loads one module script', 
   assert.equal((html.match(/<script\b/g) ?? []).length, 1);
   assert.match(html, /<a class="skip-link" href="#main"/);
   assert.match(html, /<main id="main"/);
+  assert.match(html, /<a href="\/landing\/">Giới thiệu<\/a>/);
+  assert.match(html, /<a href="\/v2\/">Giao diện v2<\/a>/);
 });
 
 test('web files avoid HTML string sinks, browser storage, and fixed hosts', async () => {

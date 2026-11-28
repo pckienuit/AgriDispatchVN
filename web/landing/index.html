@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fcf9ed">
+  <meta name="description" content="Xem dịch vụ máy gặt, drone và làm đất trên AgriDispatch VN. Đọc đơn giá theo ha và nhãn nguồn giá trước khi đặt.">
+  <title>AgriDispatch VN | Gặt đúng vụ, giá rõ từng ha</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%2315803d%22/%3E%3Cpath fill=%22white%22 d=%22M4 12c0-5 4-8 8-8 0 4-2 7-6 7l-2 2z%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/v2/vendor/fonts/fonts.css">
+  <link rel="stylesheet" href="/v2/vendor/phosphor/style.css">
+  <link rel="stylesheet" href="landing.css">
+  <script type="module" src="landing.js"></script>
+</head>
+<body id="dau-trang">
+  <a class="skip-link" href="#noi-dung">Chuyển đến nội dung chính</a>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="#dau-trang" aria-label="AgriDispatch VN, về đầu trang"><i class="ph ph-plant" aria-hidden="true"></i><span>AgriDispatch<sup>VN</sup></span></a>
+      <button class="menu-toggle button" type="button" aria-expanded="false" aria-controls="site-nav" hidden><i class="ph ph-list" aria-hidden="true"></i><span class="sr-only">Menu</span></button>
+      <nav id="site-nav" aria-label="Điều hướng chính">
+        <a href="#dich-vu">Dịch vụ</a>
+        <a href="#quy-trinh">Tìm hiểu</a>
+        <a class="button button-soft" href="#lien-he">Liên hệ</a>
+        <a class="button" href="/v2/#/chung/C-01">Đăng nhập</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="noi-dung" tabindex="-1">
+    <section class="hero" aria-labelledby="hero-title">
+      <h1 id="hero-title" class="hero-entrance"><span>Gặt đúng vụ,</span> <span>giá rõ từng ha</span></h1>
+      <div class="hero-intro">
+        <p class="hero-entrance">Hợp tác xã gom nhu cầu cùng ngày gặt. Chủ máy xem cụm ruộng trước khi nhận, hai bên xác nhận công việc.</p>
+        <a class="button hero-entrance" href="/v2/#/chung/C-05">Xem dịch vụ</a>
+      </div>
+      <picture class="hero-media hero-entrance">
+        <source media="(max-width: 767px)" srcset="img/hero-mobile.webp" width="370" height="635">
+        <img src="img/hero.webp" width="432" height="680" fetchpriority="high" alt="Cánh đồng dưới chân núi ở Cô Tô, Tri Tôn, An Giang">
+      </picture>
+    </section>
+
+    <section class="wrap introduction" aria-labelledby="intro-title">
+      <div class="intro-copy" data-reveal>
+        <h2 id="intro-title">Ruộng nhỏ lẻ khó thuê máy đúng ngày. Gộp lại thì máy mới đến.</h2>
+        <p>HTX gom nhu cầu của các thửa gần nhau, cùng ngày gặt. Chủ máy xem diện tích, đường vào ruộng và giá trước khi nhận.</p>
+        <p>Hệ thống gợi ý cụm. HTX kiểm tra và chốt trước khi chào việc.</p>
+      </div>
+      <div class="lookup" data-reveal>
+        <dl>
+          <div><dt>Dịch vụ</dt><dd>Gặt, drone, làm đất</dd></div>
+          <div><dt>Khu vực</dt><dd>Đồng bằng sông Cửu Long</dd></div>
+          <div><dt>Đơn giá</dt><dd>Theo ha</dd></div>
+          <div><dt>Nguồn giá</dt><dd>Ghi trên từng dịch vụ</dd></div>
+        </dl>
+        <a class="button button-pill" href="/v2/#/chung/C-05">Xem dịch vụ</a>
+      </div>
+    </section>
+
+    <section class="wrap services" id="dich-vu" aria-labelledby="services-title">
+      <div class="services-head" data-reveal>
+        <h2 id="services-title">Chọn dịch vụ</h2>
+        <div class="filters" role="group" aria-label="Lọc theo loại dịch vụ" hidden>
+          <button type="button" data-filter="all" aria-pressed="true">Tất cả</button>
+          <button type="button" data-filter="harvest" aria-pressed="false">Gặt</button>
+          <button type="button" data-filter="drone" aria-pressed="false">Drone</button>
+          <button type="button" data-filter="tillage" aria-pressed="false">Làm đất</button>
+        </div>
+      </div>
+      <p class="catalog-status" id="catalog-status" role="status" tabindex="-1"></p>
+      <noscript><p>Bật JavaScript để tải dịch vụ tại đây, hoặc mở <a href="/v2/#/chung/C-05">danh mục dịch vụ</a>.</p></noscript>
+      <div class="catalog" aria-busy="false">
+        <ul id="service-list" class="service-list"></ul>
+        <div class="skeleton" aria-hidden="true" hidden><span></span><span></span><span></span></div>
+        <button class="button button-soft retry" type="button" hidden>Thử lại</button>
+      </div>
+      <a class="catalog-link" href="/v2/#/chung/C-05">Xem toàn bộ danh mục <i class="ph ph-arrow-right" aria-hidden="true"></i></a>
+    </section>
+
+    <section class="wrap" aria-labelledby="bundle-title">
+      <div class="bundle" data-reveal>
+        <picture>
+          <source media="(max-width: 767px)" srcset="img/fields-mobile.webp" width="350" height="520">
+          <img src="img/fields.webp" width="1308" height="738" loading="lazy" alt="Những thửa ruộng nhìn từ trên cao tại Hòn Đất, Kiên Giang">
+        </picture>
+        <div class="bundle-note">
+          <h2 id="bundle-title">Chủ máy thấy cả cụm trước khi nhận</h2>
+          <ul>
+            <li><i class="ph ph-check" aria-hidden="true"></i> Diện tích và số thửa của cả gói</li>
+            <li><i class="ph ph-check" aria-hidden="true"></i> Đường vào ruộng và điểm hạ máy</li>
+            <li><i class="ph ph-check" aria-hidden="true"></i> Lịch dự kiến để sắp xếp máy và thợ</li>
+          </ul>
+          <a class="button button-soft" href="/v2/#/chung/C-01?buoc=dang-ky">Tạo tài khoản</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap workflow" id="quy-trinh" aria-labelledby="workflow-title">
+      <h2 id="workflow-title" data-reveal>Từ thửa ruộng<br> đến nghiệm thu</h2>
+      <ol>
+        <li class="step" data-reveal><span aria-hidden="true">01</span><h3>Nông dân đăng thửa</h3><p>Nhập thông tin ruộng và ngày gặt dự kiến. Nếu chưa biết vẽ ranh, có thể nhờ HTX hỗ trợ.</p></li>
+        <li class="step" data-reveal><span aria-hidden="true">02</span><h3>HTX gom và chào việc</h3><p>HTX rà các thửa gần nhau, cùng ngày gặt, rồi chào gói cho chủ máy phù hợp.</p></li>
+        <li class="step" data-reveal><span aria-hidden="true">03</span><h3>Hai bên xác nhận</h3><p>Sau khi chủ máy nhận gói, HTX liên hệ xác nhận lịch. Hai bên đối chiếu công việc khi nghiệm thu.</p></li>
+      </ol>
+    </section>
+
+    <section class="wrap payment" id="thanh-toan" aria-labelledby="payment-title" data-reveal>
+      <img src="img/canal.webp" width="415" height="486" loading="lazy" alt="Bờ kênh cạnh ruộng lúa ở Bình Thủy, Cần Thơ">
+      <div>
+        <h2 id="payment-title">Nền tảng không giữ tiền</h2>
+        <p>Nếu có tiền cọc, hai bên chuyển trực tiếp. Hệ thống chỉ ghi nhận thông tin do hai bên xác nhận, không xử lý khoản chuyển tiền.</p>
+        <p>Trước khi xác nhận, hãy đối chiếu đơn giá và hỏi HTX về các khoản phụ phí nếu có.</p>
+        <a class="button" href="/v2/#/chung/C-01">Đăng nhập</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer" id="lien-he">
+    <div class="wrap">
+      <div class="footer-grid">
+        <div><h2>AgriDispatch VN</h2><a href="/v2/#/chung/C-05">Danh mục dịch vụ</a></div>
+        <div><h3>Tìm hiểu</h3><a href="#quy-trinh">Cách vận hành</a><a href="#thanh-toan">Tiền cọc và nghiệm thu</a><a href="#nguon-anh">Nguồn ảnh</a></div>
+        <div><h3>Liên hệ HTX</h3><p>Trang này chưa công bố số điện thoại hay Zalo của HTX. Nếu cần xác nhận lịch, hãy trao đổi với HTX phụ trách ruộng của bạn.</p><a href="/v2/#/chung/C-01?buoc=dang-ky">Tạo tài khoản</a></div>
+      </div>
+      <p class="credits" id="nguon-anh">Ảnh minh họa Đồng bằng sông Cửu Long từ Wikimedia Commons, đã cắt khung và nén. Ảnh không chụp hoạt động của nền tảng. <a href="img/CREDITS.md">Tác giả, ảnh gốc và giấy phép</a>.</p>
+    </div>
+  </footer>
+</body>
+</html>

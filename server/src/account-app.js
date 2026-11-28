@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import express from 'express';
+import { rejectNullBytes } from './reject-null-bytes.js';
 import {
   deriveClientIdentityKey,
   normalizeIp,
@@ -175,6 +176,7 @@ export function createAccountApp({ pool, buildSha = 'development', log, ...optio
     next();
   });
   app.use(express.json({ limit: '64kb' }));
+  app.use(rejectNullBytes);
   app.use((req, res, next) => {
     if (!req.path.startsWith('/api/')) return next();
     const identity = verifyClientIdentity(req, { key: clientIdentityKey });

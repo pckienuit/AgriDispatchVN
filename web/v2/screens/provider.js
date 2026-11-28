@@ -164,6 +164,7 @@ function pButton(opts) {
       if (opts.okText) ui.toast(opts.okText, 'ok');
       if (opts.onDone) await opts.onDone(result);
     } catch (error) {
+      if (msg.isConnected) ui.clearToasts();
       msg.textContent = formatButtonError(error);
       msg.hidden = false;
     } finally {
@@ -720,6 +721,7 @@ async function packageDetail(ctx) {
     pkg = data?.package;
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
+      if (!ctx.stale()) ui.clearToasts();
       return ui.empty({
         icon: 'magnifying-glass',
         title: 'Gói việc không tồn tại',
@@ -986,6 +988,7 @@ async function claim(ctx) {
     pkgRes = await ctx.api.request('GET', `/api/packages/${pkgId}`, { auth: true });
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
+      if (!ctx.stale()) ui.clearToasts();
       return ui.empty({
         icon: 'magnifying-glass',
         title: 'Gói việc không tồn tại',
@@ -1591,6 +1594,7 @@ async function money(ctx) {
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         if (bid === requestedId) {
+          if (!ctx.stale()) ui.clearToasts();
           return ui.empty({
             icon: 'magnifying-glass',
             title: 'Không tìm thấy đơn hoặc không thuộc gói bạn nhận',
@@ -2010,6 +2014,7 @@ async function applicantsScreen(ctx) {
     });
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
+      if (!ctx.stale()) ui.clearToasts();
       return ui.empty({
         icon: 'magnifying-glass',
         title: 'Tin tuyển không tồn tại hoặc không thuộc tài khoản này',
@@ -2156,6 +2161,7 @@ async function disputeScreen(ctx) {
     ]);
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
+      if (!ctx.stale()) ui.clearToasts();
       return ui.empty({
         icon: 'magnifying-glass',
         title: 'Không tìm thấy vụ khiếu nại',

@@ -76,7 +76,7 @@ function frame(route, screen, body, action) {
   const nav = navFor(role.slug, screen?.code, built);
   const current = nav.find((n) => n.current);
   const isRoot = Boolean(current && current.code === screen?.code);
-  const back = nav.length ? (isRoot ? null : { href: current ? current.href : nav[0].href, label: 'Quay lại' }) : (session.user ? { href: homeHash(), label: 'Về trang chính' } : null);
+  const back = screen?.back ?? (nav.length ? (isRoot ? null : { href: current ? current.href : nav[0].href, label: 'Quay lại' }) : (session.user ? { href: homeHash(), label: 'Về trang chính' } : null));
   const title = screen ? screen.title : 'Không tìm thấy';
   if (role.frame === 'mobile') return ui.mobileFrame({ title, back, tabs: nav.length ? nav : null, body, action, isRoot });
   return ui.deskFrame({ size: role.frame === 'tablet' ? 'tablet' : 'desk', nav: nav.length ? nav : null, who: whoLabel(role), body, action, isRoot, back, brand: 'AgriDispatch VN' });
@@ -87,6 +87,7 @@ let lastHash = null;
 
 function makeCtx(route, screen, mySeq) {
   let actionNode = null;
+  const hash = loc.hash;
   const ctx = {
     code: screen.code,
     role: route.role,
@@ -100,7 +101,7 @@ function makeCtx(route, screen, mySeq) {
     url,
     go: (hash) => { loc.hash = hash; },
     rerender: () => { if (mySeq === seq) render(true); },
-    stale: () => mySeq !== seq,
+    stale: () => mySeq !== seq || loc.hash !== hash,
     toast: ui.toast,
     mounted: false,
     setAction(node) {
@@ -190,7 +191,8 @@ function restoreFocus(key) {
   return false;
 }
 
-function paint(node, focusMain, restoreKey) {
+function paint(node, focusMain, restoreKey, { loading = false } = {}) {
+  if (focusMain && !loading) node.querySelector('main')?.classList.add('route-enter');
   mount.replaceChildren(node);
   if (restoreKey && restoreFocus(restoreKey)) return;
   if (focusMain) {
@@ -261,19 +263,20 @@ async function render(keepFocus) {
     const out = screen.render(ctx);
     if (out && typeof out.then === 'function') {
       if (!keepFocus) {
-        paint(frame(route, screen, ui.loading('Đang tải dữ liệu từ máy chủ'), null), focusMain);
+        paint(frame(route, screen, ui.loading('Đang tải dữ liệu từ máy chủ'), null), focusMain, null, { loading: true });
         loadingShown = true;
       }
       body = await out;
-      if (mySeq !== seq) return;
+      if (ctx.stale()) return;
     } else body = out;
   } catch (error) {
-    if (mySeq !== seq) return;
+    if (ctx.stale()) return;
+    ui.clearToasts();
     body = ui.errorState({ title: 'Chưa tải được màn này', text: errorText(error), retry: () => render(true) });
   } finally {
     if (loadingShown && mySeq === seq) ui.dispose();
   }
-  if (mySeq !== seq) return;
+  if (ctx.stale()) return;
   paint(frame(route, screen, body, ctx.getAction()), focusMain, restoreKey);
   currentRouteKey = routeKey;
   ctx.mounted = true;

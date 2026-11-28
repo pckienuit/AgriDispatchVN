@@ -26,6 +26,7 @@ function status(view) {
 }
 
 function loadError(ctx, error) {
+  if (!ctx.stale()) ui.clearToasts();
   return h('div', { class: 'stack-sm' },
     h('p', { role: 'alert', class: 'msg msg--error' }, errorText(error)),
     ui.button({ label: 'Tải lại thông tin cọc', kind: 'secondary', onClick: () => ctx.rerender() }));
@@ -39,7 +40,10 @@ export async function farmerDepositScreen(ctx) {
   try {
     view = await get(ctx, depositPath(id));
   } catch (error) {
-    if (error instanceof ApiError && error.status === 404) return ui.empty({ title: 'Không tìm thấy đơn', text: 'Đơn không tồn tại hoặc không thuộc tài khoản này.', action: back });
+    if (error instanceof ApiError && error.status === 404) {
+      if (!ctx.stale()) ui.clearToasts();
+      return ui.empty({ title: 'Không tìm thấy đơn', text: 'Đơn không tồn tại hoặc không thuộc tài khoản này.', action: back });
+    }
     throw error;
   }
   const { snapshot, permissions, vietqrExample, htxCallConfirmation, deposit } = view;

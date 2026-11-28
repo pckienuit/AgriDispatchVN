@@ -46,7 +46,7 @@ export function createAccountAuth({ accountServiceUrl, internalServiceToken, tim
         }
       } finally { await reader.cancel(); }
       const { user } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-      if (!user || !uuid.test(user.id) || typeof user.name !== 'string' || user.name.length > 120 || !Array.isArray(user.roles) || user.roles.length === 0 || user.roles.length > roles.size || user.roles.some((role) => !roles.has(role))) {
+      if (!user || !uuid.test(user.id) || typeof user.name !== 'string' || [...user.name].length > 120 || !Array.isArray(user.roles) || user.roles.length === 0 || user.roles.length > roles.size || user.roles.some((role) => !roles.has(role))) {
         throw new Error('Malformed identity');
       }
       req.actor = { id: user.id, name: user.name, roles: [...new Set(user.roles)] };

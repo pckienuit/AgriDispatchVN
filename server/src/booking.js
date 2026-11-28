@@ -66,7 +66,7 @@ export function validateBookingInput(body) {
   const fieldId = parseUuid(body.fieldId, 'fieldId');
   const serviceId = parseUuid(body.serviceId, 'serviceId');
   const cropVariety = body.cropVariety === undefined ? null : typeof body.cropVariety === 'string' ? body.cropVariety.trim() : '';
-  if (cropVariety !== null && (!cropVariety || [...cropVariety].length > 80)) throw fail('cropVariety');
+  if (cropVariety !== null && (!cropVariety || [...cropVariety].length > 80 || cropVariety.includes('\0'))) throw fail('cropVariety');
   const parseDate = (value, field) => {
     if (value === undefined || value === null || value === '') return null;
     const match = typeof value === 'string' ? DATE_PATTERN.exec(value) : null;

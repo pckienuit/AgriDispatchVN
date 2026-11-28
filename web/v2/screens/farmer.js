@@ -715,14 +715,7 @@ async function homeScreen(ctx) {
     }));
 
     const others = bookings.filter((b) => b.id !== cur.id).slice(0, 5);
-    if (others.length) {
-      nodes.push(ui.section('Đơn khác', ui.list(others.map((b) => ui.listItem({
-        title: `${b.field?.name || 'Thửa'}, ${b.service?.name || 'Dịch vụ'}`,
-        meta: `${formatAreaM2(b.field?.areaM2)} · ${formatWindow(b.startAt, b.endAt)}`,
-        right: ui.stateBadge(b.state),
-        href: fUrl('F-07', { id: b.id }),
-      })))));
-    }
+    if (others.length) nodes.push(ui.section('Đơn khác', bookingRows(others)));
   }
 
   nodes.push(ui.section('Làm nhanh', ui.list([
@@ -861,7 +854,10 @@ async function fieldAccessScreen(ctx) {
   try {
     ({ data } = await ctx.api.request('GET', path, { auth: true }));
   } catch (error) {
-    if (error instanceof ApiError && error.status === 404) return ui.empty({ title: 'Không tìm thấy thửa', text: 'Thửa không tồn tại hoặc không thuộc tài khoản này.', action: back });
+    if (error instanceof ApiError && error.status === 404) {
+      if (!ctx.stale()) ui.clearToasts();
+      return ui.empty({ title: 'Không tìm thấy thửa', text: 'Thửa không tồn tại hoặc không thuộc tài khoản này.', action: back });
+    }
     throw error;
   }
   if (ctx.stale()) return h('div');
@@ -1016,6 +1012,7 @@ async function bookServiceScreen(ctx) {
     on: {
       submit(event) {
         event.preventDefault();
+        ui.clearToasts();
         errBox.hidden = true;
         const startAt = localToUtcIso(startInput.value);
         const endAt = localToUtcIso(endInput.value);
@@ -1192,7 +1189,7 @@ async function quoteConfirmScreen(ctx) {
       const definitive = error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 401;
       if (definitive) bookingTracker.clear();
       else bookingTracker.mark(true);
-      ui.clearToasts();
+      if (!ctx.stale()) ui.clearToasts();
       feedbackBox.append(ui.note({ tone: 'error', text: errorText(error) }));
       if (!definitive) {
         feedbackBox.append(ui.note({
@@ -1249,6 +1246,21 @@ async function quoteConfirmScreen(ctx) {
 
 /* ---------- F-07 Danh sach don va Chi tiet don ---------- */
 
+function bookingRows(items, showPrice = false) {
+  const list = ui.list(items.map((b) => ui.listItem({
+    title: b.field?.name || 'Thửa',
+    meta: h('div', { class: 'farmer-order-list__details' },
+      h('div', null, b.service?.name || 'Dịch vụ'),
+      h('div', null, `${formatAreaM2(b.field?.areaM2)} · ${formatWindow(b.startAt, b.endAt)}`),
+      showPrice ? priceNode(b.totalVnd, b.service?.dataLabel) : null),
+    right: ui.stateBadge(b.state),
+    href: fUrl('F-07', { id: b.id }),
+    icon: 'clipboard-text',
+  })));
+  list.classList.add('farmer-order-list');
+  return list;
+}
+
 async function bookingsListScreen(ctx) {
   const { data } = await ctx.api.request('GET', '/api/bookings?limit=50&offset=0', { auth: true });
   if (ctx.stale()) return h('div');
@@ -1268,16 +1280,7 @@ async function bookingsListScreen(ctx) {
     }));
   }
 
-  return wrap(
-    h('p', { class: 'small muted' }, 'Chọn một đơn để xem tiến trình, ủy quyền HTX, xác nhận ruộng hoặc nghiệm thu.'),
-    ui.list(items.map((b) => ui.listItem({
-      title: `${b.field?.name || 'Thửa'}, ${b.service?.name || 'Dịch vụ'}`,
-      meta: `${formatAreaM2(b.field?.areaM2)} · ${formatWindow(b.startAt, b.endAt)} · ${formatVnd(b.totalVnd)}${b.service?.dataLabel === 'synthetic' ? ' (Giá mô phỏng)' : ''}`,
-      right: ui.stateBadge(b.state),
-      href: fUrl('F-07', { id: b.id }),
-      icon: 'clipboard-text',
-    }))),
-  );
+  return wrap(h('p', { class: 'small muted' }, 'Chọn một đơn để xem tiến trình, ủy quyền HTX, xác nhận ruộng hoặc nghiệm thu.'), bookingRows(items, true));
 }
 
 async function bookingDetailScreen(ctx) {
@@ -1865,6 +1868,7 @@ function evidenceSection(ctx, disputeId) {
       draw(data);
     } catch (error) {
       if (ctx.stale() || !box.isConnected) return;
+      ui.clearToasts();
       ui.clear(box);
       box.append(ui.errorState({ text: errorText(error), retry: () => loadPage(offset) }));
     }
@@ -1903,6 +1907,7 @@ function evidenceSection(ctx, disputeId) {
         const err = validateImageFile(f);
         uploadFeedback.hidden = true;
         if (err) {
+          ui.clearToasts();
           chosenFile = null;
           uploadBtn.disabled = true;
           uploadFeedback.textContent = err;
@@ -1925,6 +1930,7 @@ function evidenceSection(ctx, disputeId) {
           ctx.toast('Đã tải ảnh bằng chứng lên', 'ok');
           await loadPage(0);
         } catch (error) {
+          if (!ctx.stale() && uploadFeedback.isConnected) ui.clearToasts();
           uploadFeedback.textContent = errorText(error);
           uploadFeedback.hidden = false;
           uploading = false;
@@ -1976,6 +1982,7 @@ function evidenceSection(ctx, disputeId) {
               height: Math.round((item.height * w) / item.width),
             }));
           } catch (error) {
+            if (!ctx.stale() && cardMsg.isConnected) ui.clearToasts();
             cardMsg.textContent = error?.code === 'THUMBNAIL_PENDING' ? 'Ảnh thu nhỏ đang được tạo, thử lại sau.' : errorText(error);
             cardMsg.hidden = false;
           } finally {
@@ -2004,6 +2011,7 @@ function evidenceSection(ctx, disputeId) {
               downloads.delete(objUrl);
             }, 1000));
           } catch (error) {
+            if (!ctx.stale() && cardMsg.isConnected) ui.clearToasts();
             cardMsg.textContent = errorText(error);
             cardMsg.hidden = false;
           } finally {
@@ -2151,6 +2159,7 @@ function consentActionButton(ctx, disputeId, version) {
             ctx.rerender();
           } catch (error) {
             if (ctx.stale()) return;
+            ui.clearToasts();
             const text = farmerRefusalMessage(error);
             if (error instanceof ApiError && error.status === 409) {
               ctx.toast(text, 'warn');
@@ -2542,6 +2551,7 @@ async function postponementScreen(ctx) {
       } catch (error) {
         if (!(error instanceof ApiError) || error.code !== 'STALE_VERSION') throw error;
         if (ctx.stale()) return;
+        ui.clearToasts();
         const reload = ui.button({ label: 'Tải lại đề xuất', kind: 'secondary', onClick: () => ctx.rerender() });
         consentAction.replaceWith(ui.note({ tone: 'error', text: 'Đã có đề xuất dời lịch mới. Tải lại để xem đúng phiên bản.', action: reload }));
         reload.focus();
