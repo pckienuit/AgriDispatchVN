@@ -1,5 +1,6 @@
 import express from 'express';
 import { parsePagination } from './catalog.js';
+import { assertFieldInspectionPassedForBooking, FieldInspectionError } from './field-inspection-gate.js';
 
 // G7a: field readiness confirmations and operator shift lifecycle.
 // Readiness flags are user confirmations, not agronomic thresholds or legal validation.
@@ -234,7 +235,7 @@ async function recordInspection(pool, actor, bookingId, input) {
 
     // Share the package lock with startShift, readiness and cancel, then verify every precondition under lock.
     const pkg = (await client.query(
-      'SELECT status, coop_id, window_start_at, window_end_at FROM dispatch.packages WHERE id = $1 FOR UPDATE',
+      'SELECT status, coop_id FROM dispatch.packages WHERE id = $1 FOR UPDATE',
       [packageId],
     )).rows[0];
     if (!pkg || pkg.coop_id !== actor.id) throw fail(404, 'NOT_FOUND');
@@ -253,7 +254,7 @@ async function recordInspection(pool, actor, bookingId, input) {
     const { rows } = await client.query(
       `INSERT INTO dispatch.field_inspections
          (booking_id, package_id, reviewer_id, result, reason, readiness_sequence, window_start_at, window_end_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       SELECT $1, p.id, $3, $4, $5, $6, p.window_start_at, p.window_end_at FROM dispatch.packages p WHERE p.id = $2
        RETURNING sequence, booking_id, package_id, result, reason, created_at`,
       [
         bookingId,
@@ -262,8 +263,6 @@ async function recordInspection(pool, actor, bookingId, input) {
         input.result,
         input.reason,
         readiness.rows[0].sequence,
-        pkg.window_start_at,
-        pkg.window_end_at,
       ],
     );
     const user = await client.query('SELECT name FROM account.users WHERE id = $1', [actor.id]);
@@ -277,43 +276,27 @@ async function recordInspection(pool, actor, bookingId, input) {
 async function startShift(pool, actor, packageId) {
   return transaction(pool, async (client) => {
     const { rows } = await client.query(
-      'SELECT status, operator_id, window_start_at, window_end_at FROM dispatch.packages WHERE id = $1 FOR UPDATE',
+      'SELECT status, operator_id FROM dispatch.packages WHERE id = $1 FOR UPDATE',
       [packageId],
     );
     const pkg = rows[0];
     if (!pkg || pkg.operator_id !== actor.id) throw fail(404, 'NOT_FOUND');
     if (pkg.status !== 'CLAIMED') throw fail(409, 'PACKAGE_NOT_CLAIMED');
     if (await hasShift(client, packageId)) throw fail(409, 'SHIFT_ALREADY_STARTED');
-    // Latest confirmation per booking decides. Any booking without all three true blocks the start.
-    const gaps = await client.query(
-      `SELECT count(*)::int AS n FROM dispatch.package_bookings pb
-         LEFT JOIN LATERAL (
-           SELECT drained, mature, intake_ready FROM dispatch.readiness_events r
-            WHERE r.booking_id = pb.booking_id ORDER BY r.sequence DESC LIMIT 1) latest ON true
-        WHERE pb.package_id = $1 AND NOT COALESCE(latest.drained AND latest.mature AND latest.intake_ready, false)`,
-      [packageId],
-    );
-    if (gaps.rows[0].n > 0) throw fail(409, 'READINESS_INCOMPLETE');
-    // Latest HTX inspection per booking must be PASSED and still match current readiness and package window.
-    const inspectionGaps = await client.query(
-      `SELECT count(*)::int AS n FROM dispatch.package_bookings pb
-         LEFT JOIN LATERAL (
-           SELECT sequence FROM dispatch.readiness_events r
-            WHERE r.booking_id = pb.booking_id ORDER BY r.sequence DESC LIMIT 1) lr ON true
-         LEFT JOIN LATERAL (
-           SELECT result, readiness_sequence, window_start_at, window_end_at
-             FROM dispatch.field_inspections i
-            WHERE i.booking_id = pb.booking_id ORDER BY i.sequence DESC LIMIT 1) li ON true
-        WHERE pb.package_id = $1
-          AND NOT COALESCE(
-            li.result = 'PASSED'
-            AND li.readiness_sequence = lr.sequence
-            AND li.window_start_at = $2
-            AND li.window_end_at = $3,
-            false)`,
-      [packageId, pkg.window_start_at, pkg.window_end_at],
-    );
-    if (inspectionGaps.rows[0].n > 0) throw fail(409, 'INSPECTION_INCOMPLETE');
+    // Keep readiness as its own prerequisite; historical cancelled members are not part of a new shift.
+    const { rows: members } = await client.query(`SELECT b.id, COALESCE(r.drained AND r.mature AND r.intake_ready, false) AS ready
+      FROM dispatch.package_bookings pb JOIN dispatch.bookings b ON b.id = pb.booking_id
+      LEFT JOIN LATERAL (SELECT drained, mature, intake_ready FROM dispatch.readiness_events
+        WHERE booking_id = b.id ORDER BY sequence DESC LIMIT 1) r ON true
+      WHERE pb.package_id = $1 AND b.state = 'ASSIGNED' ORDER BY b.id`, [packageId]);
+    if (!members.length) throw fail(409, 'BOOKING_UNAVAILABLE');
+    if (members.some(({ ready }) => !ready)) throw fail(409, 'READINESS_INCOMPLETE');
+    for (const { id } of members) await assertFieldInspectionPassedForBooking(client, id);
+    const overdue = await client.query(`SELECT 1 FROM dispatch.deposit_holds h
+      WHERE h.booking_id = ANY($1::uuid[]) AND h.deposit_expires_at <= clock_timestamp() AND NOT EXISTS (
+        SELECT 1 FROM dispatch.deposits d JOIN dispatch.deposit_events e ON e.deposit_id = d.id
+        WHERE d.booking_id = h.booking_id AND e.event_type = 'DEPOSIT_CONFIRMED') LIMIT 1`, [members.map(({ id }) => id)]);
+    if (overdue.rowCount) throw fail(409, 'DEPOSIT_EXPIRED');
     const shift = (await client.query(
       "INSERT INTO dispatch.shifts (package_id, status) VALUES ($1, 'RUNNING') RETURNING *",
       [packageId],
@@ -365,7 +348,7 @@ async function completeShift(pool, actor, shiftId, input) {
     const ceiling = await client.query(
       `SELECT COALESCE(SUM(b.field_area_m2), 0)::bigint AS total
          FROM dispatch.package_bookings pb JOIN dispatch.bookings b ON b.id = pb.booking_id
-        WHERE pb.package_id = $1`,
+        WHERE pb.package_id = $1 AND b.state = 'ASSIGNED'`,
       [shift.package_id],
     );
     if (input.areaM2 > Number(ceiling.rows[0].total)) throw fail(409, 'AREA_EXCEEDS_BOOKINGS');
@@ -400,6 +383,7 @@ export function createShiftRouter({ pool, authenticate }) {
         const { status = 200, body } = await work(req);
         return res.status(status).json(body);
       } catch (error) {
+        if (error instanceof FieldInspectionError) return res.status(409).json({ error: { code: error.code, message: error.message } });
         if (error instanceof ApiError) return res.status(error.status).json({ error: { code: error.code } });
         // Trigger-level refusal means a concurrent change beat this request.
         if (error.code === RESTRICT_VIOLATION) return res.status(409).json({ error: { code: 'STATE_CHANGED' } });
@@ -439,7 +423,7 @@ export function createShiftRouter({ pool, authenticate }) {
     const isCoop = req.actor.roles.includes('coop');
     const scoped = await pool.query(
       `SELECT b.state AS booking_state, b.coordinator_id,
-              p.id AS package_id, p.coop_id, p.status AS package_status, p.window_start_at, p.window_end_at,
+              p.id AS package_id, p.coop_id, p.status AS package_status,
               EXISTS (SELECT 1 FROM dispatch.shifts s WHERE s.package_id = p.id) AS has_shift,
               (SELECT max(r.sequence) FROM dispatch.readiness_events r WHERE r.booking_id = b.id) AS latest_readiness_sequence
          FROM dispatch.bookings b
@@ -455,14 +439,16 @@ export function createShiftRouter({ pool, authenticate }) {
     const { rows } = await pool.query(
       `SELECT i.sequence, i.booking_id, i.package_id, i.result, i.reason, i.created_at, u.name AS reviewer_name,
               NOT COALESCE(
-                i.readiness_sequence = $2 AND i.window_start_at = $3 AND i.window_end_at = $4,
+                i.readiness_sequence = (SELECT max(sequence) FROM dispatch.readiness_events WHERE booking_id = $1)
+                AND i.window_start_at = p.window_start_at AND i.window_end_at = p.window_end_at,
                 false) AS stale
          FROM dispatch.field_inspections i
+         JOIN dispatch.packages p ON p.id = i.package_id
          LEFT JOIN account.users u ON u.id = i.reviewer_id
         WHERE i.booking_id = $1
         ORDER BY i.sequence DESC
         LIMIT 20`,
-      [bookingId, row.latest_readiness_sequence, row.window_start_at, row.window_end_at],
+      [bookingId],
     );
     const history = rows.map((item) => inspectionDto(item, item.stale));
     const latest = history[0] ?? null;
@@ -514,19 +500,16 @@ export function createShiftRouter({ pool, authenticate }) {
     let window;
     try { window = parsePagination(req.query); } catch (error) { throw fail(error.status, error.code); }
     const { rows } = await pool.query(`SELECT p.id,p.locality,p.window_start_at,p.window_end_at,
-      (SELECT count(*)::int FROM dispatch.package_bookings pb WHERE pb.package_id=p.id) AS booking_count,
-      NOT EXISTS (SELECT 1 FROM dispatch.package_bookings pb
+      (SELECT count(*)::int FROM dispatch.package_bookings pb JOIN dispatch.bookings b ON b.id = pb.booking_id
+        WHERE pb.package_id = p.id AND b.state = 'ASSIGNED') AS booking_count,
+      NOT EXISTS (SELECT 1 FROM dispatch.package_bookings pb JOIN dispatch.bookings b ON b.id = pb.booking_id
         LEFT JOIN LATERAL (SELECT drained,mature,intake_ready FROM dispatch.readiness_events r
           WHERE r.booking_id=pb.booking_id ORDER BY r.sequence DESC LIMIT 1) latest ON true
-        WHERE pb.package_id=p.id AND NOT COALESCE(latest.drained AND latest.mature AND latest.intake_ready,false)) AS ready,
-      NOT EXISTS (SELECT 1 FROM dispatch.package_bookings pb
-        LEFT JOIN LATERAL (SELECT sequence FROM dispatch.readiness_events r
-          WHERE r.booking_id=pb.booking_id ORDER BY r.sequence DESC LIMIT 1) lr ON true
-        LEFT JOIN LATERAL (SELECT result,readiness_sequence,window_start_at,window_end_at FROM dispatch.field_inspections i
-          WHERE i.booking_id=pb.booking_id ORDER BY i.sequence DESC LIMIT 1) li ON true
-        WHERE pb.package_id=p.id AND NOT COALESCE(
-          li.result='PASSED' AND li.readiness_sequence=lr.sequence
-          AND li.window_start_at=p.window_start_at AND li.window_end_at=p.window_end_at,false)) AS inspected
+        WHERE pb.package_id=p.id AND b.state = 'ASSIGNED'
+          AND NOT COALESCE(latest.drained AND latest.mature AND latest.intake_ready,false)) AS ready,
+      NOT EXISTS (SELECT 1 FROM dispatch.package_bookings pb JOIN dispatch.bookings b ON b.id = pb.booking_id
+        WHERE pb.package_id=p.id AND b.state = 'ASSIGNED'
+          AND dispatch.field_inspection_status(b.id) IS DISTINCT FROM 'PASSED') AS inspected
       FROM dispatch.packages p WHERE p.operator_id=$1 AND p.status='CLAIMED'
         AND NOT EXISTS (SELECT 1 FROM dispatch.shifts s WHERE s.package_id=p.id)
       ORDER BY p.window_start_at,p.id LIMIT $2 OFFSET $3`, [req.actor.id, window.limit, window.offset]);

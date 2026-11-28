@@ -124,7 +124,7 @@ test('postponement consent, history, resource races and privacy on PostgreSQL',a
    error(race[0],409,'SHIFT_ACTIVE');
   }else{
    assert.equal(race[0].status,200);
-   error(race[1],409,'INSPECTION_INCOMPLETE');
+   error(race[1],409,'FIELD_INSPECTION_REQUIRED');
    assert.equal((await post(`/api/bookings/${p.bookings[0]}/inspections`,{result:'PASSED'},coop)).status,201);
    assert.equal((await post(`/api/packages/${p.id}/shifts/start`,{},operator)).status,201);
   }

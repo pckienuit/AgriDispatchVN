@@ -61,6 +61,8 @@ export const DISPATCH_TABLES = Object.freeze([
   'package_call_confirmations',
   'deposits',
   'deposit_events',
+  'provider_bank_accounts',
+  'deposit_holds',
   'platform_parameter_versions',
   'job_reports',
   'platform_control_events',
@@ -292,7 +294,8 @@ export async function bootstrapDatabase(pool, { roles = DEFAULT_ROLES, passwords
         await client.query(`GRANT INSERT (owner_id, ${attributes}, ${geometry}),
           UPDATE (${attributes}, ${geometry}, updated_at, access_details) ON TABLE dispatch.fields TO ${qBook}`);
       } else {
-        await client.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE dispatch.${qIdent(table)} TO ${qBook}`);
+        const privileges = ['provider_bank_accounts', 'deposit_holds'].includes(table) ? 'SELECT, INSERT, UPDATE' : 'SELECT, INSERT, UPDATE, DELETE';
+        await client.query(`GRANT ${privileges} ON TABLE dispatch.${qIdent(table)} TO ${qBook}`);
       }
     }
     await client.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA dispatch TO ${qBook}`);

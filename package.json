@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "eslint": "10.15.0"
+    "eslint": "10.15.0",
+    "jsqr": "1.4.0"
   }
 }

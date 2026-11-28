@@ -144,6 +144,17 @@ test('bootstrapDatabase refuses unmigrated DB, then creates least-privilege SCRA
   await assert.rejects(() => bookPool.query('CREATE TABLE dispatch.evil (x int)'), /permission denied/);
   await assert.rejects(() => bookPool.query('TRUNCATE dispatch.services'), /permission denied/);
 
+  for (const table of ['provider_bank_accounts', 'deposit_holds']) {
+    const relation = `dispatch.${table}`;
+    const { rows: [grants] } = await ctx.pool.query(`SELECT
+      has_table_privilege($1, $3, 'SELECT') AS account_read,
+      has_table_privilege($2, $3, 'SELECT') AS booking_read,
+      has_table_privilege($2, $3, 'INSERT') AS booking_insert,
+      has_table_privilege($2, $3, 'UPDATE') AS booking_update,
+      has_table_privilege($2, $3, 'DELETE') AS booking_delete`, [roles.account, roles.booking, relation]);
+    assert.deepEqual(grants, { account_read: false, booking_read: true, booking_insert: true, booking_update: true, booking_delete: false });
+  }
+
   // Allowed narrow read on account.users(id, name).
   await bookPool.query('SELECT id, name FROM account.users LIMIT 1');
 
