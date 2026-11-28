@@ -1,5 +1,5 @@
 // Product UI shell: hash router, role frames, session and API wiring. Screens come from ../screens/*.js.
-// Restore the user from the same-origin HttpOnly session cookie before routing.
+// Restore the same-origin HttpOnly session in parallel with public routes.
 import { createApiClient } from '../../api.js';
 import { ui } from '../kit/ui.js';
 import { ROLES, codeAllowedInRole, homeSlugFor, navFor, parseHash, url } from './routes.js';
@@ -13,8 +13,11 @@ const mount = doc.getElementById('app');
 
 const built = new Set(registry.keys());
 const PUBLIC = new Set(['C-01', 'C-04', 'C-05', 'C-06']);
+const isPublic = (route) => route.role?.slug === 'chung' && PUBLIC.has(route.code);
 
 const session = { user: null, timer: null };
+let sessionRevision = 0;
+let restoring = null;
 const api = createApiClient({
   useSessionCookie: true,
   onUnauthorized: () => {
@@ -23,6 +26,7 @@ const api = createApiClient({
 });
 
 function signIn(data) {
+  sessionRevision++;
   session.user = data.user;
   globalThis.clearTimeout(session.timer);
   const left = Date.parse(data.expiresAt) - Date.now();
@@ -30,6 +34,7 @@ function signIn(data) {
 }
 
 function signOut(message) {
+  sessionRevision++;
   session.user = null;
   globalThis.clearTimeout(session.timer);
   if (message) ui.toast(message, 'error');
@@ -80,7 +85,7 @@ function frame(route, screen, body, action) {
     { href: url('chung', 'C-05'), label: 'Danh mục dịch vụ', current: code === 'C-05' || code === 'C-06' },
   ] : nav;
   return ui.deskFrame({ size: role.frame, title, back, nav: desktopNav, tabs: nav, who, body, action, isRoot,
-    brand: 'AgriDispatch VN', focused: ['C-01', 'C-04', 'C-06'].includes(code) });
+    focused: ['C-01', 'C-04', 'C-06'].includes(code) });
 }
 
 let seq = 0;
@@ -212,9 +217,14 @@ function deny(route, kind, reason) {
 }
 
 async function render(keepFocus) {
-  const mySeq = ++seq;
   const hash = loc.hash || '';
   const route = parseHash(hash);
+  if (restoring && !session.user && !isPublic(route)) {
+    // A public screen can link to a protected one while the cookie check is pending.
+    await restoring.catch(() => {});
+    if (loc.hash !== hash) return;
+  }
+  const mySeq = ++seq;
   const focusMain = !keepFocus && hash !== lastHash;
   lastHash = hash;
 
@@ -286,16 +296,38 @@ async function render(keepFocus) {
 
 export { render };
 globalThis.addEventListener('offline', () => ui.toast('Mất kết nối mạng. Thao tác chưa được gửi; thử lại khi có mạng.', 'error'));
-async function start() {
+async function restoreSession() {
+  const revision = sessionRevision;
   try {
     const { data } = await api.request('GET', '/api/me', { headers: { Prefer: 'anonymous' } });
-    if (data) signIn(data);
+    if (data?.user && revision === sessionRevision) {
+      signIn(data);
+      return true;
+    }
   } catch (error) {
     if (error.status !== 401) throw error;
   }
-  globalThis.addEventListener('hashchange', () => render(false));
+  return false;
+}
+
+async function start() {
+  const publicEntry = isPublic(parseHash(loc.hash));
+  const onHashChange = () => render(false);
+  restoring = restoreSession().finally(() => { restoring = null; });
+  if (publicEntry) {
+    globalThis.addEventListener('hashchange', onHashChange);
+    // An account-service outage must not take down a public page.
+    await Promise.all([render(false), restoring.catch(() => false).then((restored) => {
+      if (restored && isPublic(parseHash(loc.hash))) return render(true);
+    })]);
+    return;
+  }
+  await restoring;
+  globalThis.addEventListener('hashchange', onHashChange);
   await render(false);
 }
 start().catch((error) => {
-  mount.replaceChildren(ui.errorState({ title: 'Không mở được ứng dụng', text: errorText(error) }));
+  const notice = ui.errorState({ title: 'Không mở được ứng dụng', text: errorText(error) });
+  if (mount.querySelector('.app-boot')) mount.querySelector('main').replaceChildren(notice);
+  else mount.replaceChildren(notice);
 });

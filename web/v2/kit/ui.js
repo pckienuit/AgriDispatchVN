@@ -54,7 +54,7 @@ const doc = root.document;
   };
 
   /* ---------- Chế độ giao diện (Sáng / Tự động / Tối) ---------- */
-  var themeMode = 'light';
+  var themeMode = 'auto';
   var THEME_MODES = ['light', 'auto', 'dark'];
   var theme = ui.theme = {
     modes: THEME_MODES,
@@ -950,8 +950,9 @@ const doc = root.document;
     var wrapClass = 'wrap' + (o.focused ? ' wrap--focused' : '');
     var appNode = h('div', { class: appCls },
       h('header', { class: 'topbar' }, h('div', { class: 'topbar__in' },
+        h('a', { class: 'brand', href: '/landing/', 'aria-label': 'AgriDispatch VN, về trang giới thiệu' },
+          ui.icon('plant'), h('span', null, 'AgriDispatch', h('sup', null, 'VN'))),
         backNode && !o.title ? h('div', { class: 'topbar__back' }, backNode) : null,
-        h('div', { class: 'brand' }, ui.icon('plant'), o.brand || 'AgriDispatch'),
         navList.length ? h('nav', { class: 'nav', 'aria-label': 'Điều hướng chính' }, navList.map(function (n) {
           return h('a', { href: n.href, 'aria-current': n.current ? 'page' : null }, n.label);
         })) : null,

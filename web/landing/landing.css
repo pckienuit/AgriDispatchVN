@@ -55,11 +55,12 @@ h3 { font-size: 22px; line-height: 1.25; letter-spacing: -.025em; }
 .btn-dot:focus-visible::before { opacity: 1; transform: scale(1); }
 
 
-.site-header { position: fixed; inset: 0 0 auto; z-index: 2; background: var(--paper); border-bottom: 1px solid var(--line); }
+.site-header { position: fixed; inset: 0 0 auto; z-index: 2; background: var(--paper); border-bottom: 1px solid var(--line); view-transition-name: site-header; }
 .site-header:not(.is-enhanced) { position: sticky; }
 .header-inner { min-height: 69px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.brand { display: inline-flex; align-items: center; min-height: 44px; gap: 8px; text-decoration: none; font-weight: 700; font-size: 22px; letter-spacing: -.035em; }
-.brand i { color: #29683f; font-size: 28px; }
+@media (max-width: 760px) { .header-inner { min-height: 64px; width: calc(100% - 40px); } }
+.brand { display: inline-flex; align-items: center; min-height: 44px; gap: 8px; text-decoration: none; font-weight: 700; font-size: 22px; letter-spacing: -.035em; line-height: 1; }
+.brand i { color: #15803d; font-size: 28px; }
 .brand sup { margin-inline-start: 4px; font-size: 12px; letter-spacing: 0; }
 .site-header nav { display: flex; align-items: center; gap: 22px; }
 .site-header nav > a:not(.button) { display: flex; align-items: center; min-height: 44px; text-decoration: none; }
@@ -197,9 +198,15 @@ h3 { font-size: 22px; line-height: 1.25; letter-spacing: -.025em; }
   @keyframes rise { from { opacity: 0; translate: 0 16px; } }
 }
 
+/* Match the v2 header transition. */
+::view-transition-group(*), ::view-transition-old(root), ::view-transition-new(root) {
+  animation-duration: 180ms;
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none; }
   :not(.hero__t--w), ::before, ::after { transform: none !important; }
   .btn-dot::before { opacity: 0; }
 }
