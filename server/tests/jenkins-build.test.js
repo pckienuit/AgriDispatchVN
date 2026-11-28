@@ -446,7 +446,7 @@ test('Jenkinsfile declares literal BUILD_SHA (no trim: true) and PUBLISH=false p
   assert.doesNotMatch(jenkinsfile, /string\(name: 'BUILD_SHA'[^)]*trim:\s*true/);
   assert.match(jenkinsfile, /booleanParam\(name: 'PUBLISH', defaultValue: false/);
   assert.match(jenkinsfile, /params\.BUILD_SHA ==~ \/\[0-9a-f\]\{40\}\//);
-  assert.match(jenkinsfile, /APPROVED_BRANCH = 'cloud\/is402-2026-11-24'/);
+  assert.match(jenkinsfile, /APPROVED_BRANCH = 'main'/);
   assert.match(jenkinsfile, /if \[ "\$head" != "\$BUILD_SHA" \]/);
   assert.match(jenkinsfile, /skipDefaultCheckout\(true\)/);
 });
@@ -470,6 +470,8 @@ test('Jenkinsfile publishes only behind PUBLISH gate, isolates DOCKER_CONFIG, ve
   assert.match(jenkinsfile, /DOCKER_CONFIG="\$CI_EPH\/docker-config" docker logout "\$ACR_REGISTRY"/);
   assert.doesNotMatch(jenkinsfile, /^[ \t]*docker logout/m);
   assert.match(jenkinsfile, /az acr show --subscription "\$AZURE_SUBSCRIPTION_ID" --resource-group "\$RESOURCE_GROUP" --name "\$ACR_NAME" --query id/);
+  assert.match(jenkinsfile, /^[ \t]*az acr login --subscription "\$AZURE_SUBSCRIPTION_ID" --name "\$ACR_NAME" --output none >&2$/m,
+    'ACR login must not pollute captured image digests');
   assert.match(jenkinsfile, /docker build -f infra\/Function\.Dockerfile --build-arg BUILD_SHA="\$BUILD_SHA"/);
   assert.doesNotMatch(jenkinsfile, /:latest\b/);
   assert.doesNotMatch(jenkinsfile, /docker login/);
@@ -497,8 +499,8 @@ test('disposable Compose PostgreSQL requires SCRAM on local and host connections
 
 test('Azure pipeline parses and triggers only on the approved branch with fixed infra/terraform and Validate+Terraform before Build', () => {
   const az = loadAzure();
-  assert.deepEqual(az.trigger.branches.include, ['cloud/is402-2026-11-24']);
-  assert.deepEqual(az.pr.branches.include, ['cloud/is402-2026-11-24']);
+  assert.deepEqual(az.trigger.branches.include, ['main']);
+  assert.deepEqual(az.pr.branches.include, ['main']);
   assert.deepEqual(az.stages.map((s) => s.stage), ['Validate', 'Terraform', 'Build', 'Deploy']);
   assert.equal(az.parameters.some((p) => p.name === 'terraformDir'), false);
   assert.equal(az.variables.TERRAFORM_VERSION, '1.17.2');
@@ -525,7 +527,7 @@ test('Azure PR and Validate paths carry no secret group, no self-hosted pool and
   for (const stageName of ['Terraform', 'Build', 'Deploy']) {
     const stage = az.stages.find((s) => s.stage === stageName);
     assert.match(stage.condition, /ne\(variables\['Build\.Reason'\],\s*'PullRequest'\)/, stageName);
-    assert.match(stage.condition, /eq\(variables\['Build\.SourceBranch'\],\s*'refs\/heads\/cloud\/is402-2026-11-24'\)/, stageName);
+    assert.match(stage.condition, /eq\(variables\['Build\.SourceBranch'\],\s*'refs\/heads\/main'\)/, stageName);
   }
   const validation = validate.jobs[0].steps.find(step => step.bash)?.bash ?? '';
   assert.match(validation, /pip install PyYAML==6\.0\.3/);

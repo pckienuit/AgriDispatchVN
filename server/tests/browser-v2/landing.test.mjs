@@ -38,6 +38,45 @@ async function noOverflow(b) {
   assert.deepEqual(layout.wide, [], `elements outside viewport: ${JSON.stringify(layout)}`);
 }
 
+async function heroAt(b, p, width, reduced = false) {
+  const heightProgress = 1 - (1 - Math.min(1, Math.max(0, (p - .037) / .641))) ** 2;
+  const shrink = width <= 900 ? 0 : 1 - (1 - Math.min(1, Math.max(0, (p - .585) / .415))) ** 2;
+  const metrics = await b.ev(`(() => {
+    const hero = document.querySelector('[data-hero]');
+    if (!hero) return {};
+    const inner = hero.querySelector('.hero__inner');
+    const stage = hero.querySelector('.hero__stage');
+    if (!${reduced}) scrollTo({top: hero.offsetTop + ${p} * (hero.offsetHeight - innerHeight), behavior: 'instant'});
+    return {w: inner.clientWidth, h: inner.clientHeight, sticky: getComputedStyle(stage).position,
+      distance: hero.offsetHeight - innerHeight, static: hero.classList.contains('hero--static')};
+  })()`);
+  assert.equal(metrics.static, reduced, 'hero should reflect the motion preference');
+  assert.equal(metrics.sticky, reduced ? 'relative' : 'sticky');
+  if (!reduced) assert.equal(metrics.distance, width <= 900 ? 1500 : 3100);
+  const h = heightProgress * metrics.h;
+  const w = metrics.w * (1 - .6872 * shrink);
+  const radius = 12 + 52 * shrink;
+  const opacity = Math.max(0, 1 - p / .16);
+  await b.waitFor(`(() => {
+    const media = document.querySelector('.hero__media').getBoundingClientRect();
+    const style = getComputedStyle(document.querySelector('.hero__media'));
+    const mask = getComputedStyle(document.querySelector('.hero__tw')).clipPath;
+    const hint = document.querySelector('.hero__hint');
+    const white = getComputedStyle(document.querySelector('.hero__t--w')).transform;
+    const [inset, round] = mask.slice(6, -1).split(' round ');
+    const [top, right = top, bottom = top, left = right] = inset.split(' ').map(parseFloat);
+    const near = (a, b) => Math.abs(a - b) < 1;
+    return near(media.height, ${h}) && near(media.width, ${w})
+      && near(parseFloat(style.borderRadius), ${radius}) && mask.startsWith('inset(')
+      && near(top, ${metrics.h - h}) && near(right, 0) && near(bottom, 0) && near(left, ${metrics.w - w})
+      && near(parseFloat(round), ${radius}) && near(new DOMMatrix(white === 'none' ? undefined : white).m41, ${-.0746 * metrics.w * shrink})
+      && Math.abs(Number(getComputedStyle(hint).opacity) - ${opacity}) < .01
+      && hint.inert === ${opacity < .3};
+  })()`);
+  if (!reduced && p > 0) assert.ok(await b.ev("Math.abs(document.querySelector('.hero__stage').getBoundingClientRect().top - 115) < 2"));
+  await noOverflow(b);
+}
+
 async function capturePage(b, width, height) {
   const pageHeight = await b.ev('document.documentElement.scrollHeight');
   for (let top = 0; top < pageHeight; top += Math.floor(height * .7)) {
@@ -46,13 +85,11 @@ async function capturePage(b, width, height) {
   }
   await b.waitFor("[...document.images].every(img => img.complete && img.naturalWidth > 0)");
   await b.ev("scrollTo({top: 0, behavior: 'instant'})");
-  await b.sleep(650);
   await noOverflow(b);
-  await b.shot(join(shots, `hero-${width}.png`));
   const response = await b.send('Page.captureScreenshot', {
     format: 'png', captureBeyondViewport: true, clip: { x: 0, y: 0, width, height: pageHeight, scale: 1 },
   });
-  await writeFile(join(shots, `full-${width}.png`), Buffer.from(response.result.data, 'base64'));
+  await writeFile(join(shots, `landing-full-${width}.png`), Buffer.from(response.result.data, 'base64'));
 }
 
 async function clickRoute(b, selector, hash, screen) {
@@ -122,7 +159,7 @@ try {
   assert.equal(payload.items.length, 3);
   assert.ok(payload.items.every(({ dataLabel }) => dataLabel === 'synthetic'));
   assert.ok(payload.items.every(({ name }) => name.endsWith(' (giả lập)')));
-  for (const [width, height] of [[1440, 900], [390, 844]]) {
+  for (const [width, height] of [[1440, 900], [1024, 768], [390, 844]]) {
     const b = await open({ width, height, mobile: width === 390 });
     try {
       await b.go(landing);
@@ -130,8 +167,14 @@ try {
       await b.ev('document.fonts.ready.then(() => true)');
       assert.equal(await b.ev("document.fonts.check('700 22px Be Vietnam Pro')"), true);
       assert.equal(await b.ev("getComputedStyle(document.documentElement).scrollBehavior"), 'smooth');
-      assert.deepEqual(await b.ev("[...document.querySelectorAll('.hero-entrance')].map(e => [getComputedStyle(e).animationName, getComputedStyle(e).animationDelay])"), [['rise', '0s'], ['rise', '0.08s'], ['rise', '0.16s'], ['rise', '0.24s']]);
       assert.equal(await b.ev("document.querySelector('.bundle').classList.contains('is-visible')"), false);
+      for (const p of [0, .08, .4, .8, 1]) {
+        await heroAt(b, p, width);
+        if ((width === 1440 && p !== .08) || (width === 390 && (p === 0 || p === 1))) {
+          await b.shot(join(shots, `hero-${width === 390 ? '390-' : ''}p${Math.round(p * 100)}.png`));
+        }
+      }
+      await heroAt(b, 0, width);
       const rendered = await b.ev("[...document.querySelectorAll('.service-link')].map(a => ({ path: a.getAttribute('href'), name: a.querySelector('h3').textContent, price: a.querySelector('dd').textContent, label: a.querySelector('.service-badge').textContent }))");
       assert.deepEqual(rendered, payload.items.map((s) => ({
         path: `/v2/#/chung/C-06?id=${s.id}`, name: s.name.slice(0, -' (giả lập)'.length),
@@ -153,20 +196,16 @@ try {
         assert.equal(await b.ev("document.activeElement.matches('.menu-toggle[aria-expanded=false]')"), true);
       }
       assert.equal(await b.ev("[...document.querySelectorAll('.footer-grid a')].every(a => a.offsetHeight >= 44)"), true);
-      if (width === 1440) {
-        assert.equal(await b.ev("document.querySelector('.hero').offsetWidth === document.querySelector('.wrap').offsetWidth"), true);
-      } else {
-        assert.notEqual(await b.ev("getComputedStyle(document.querySelector('.hero h1')).textShadow"), 'none');
-      }
-      await capturePage(b, width, height);
-      assert.equal(await b.ev("document.querySelector('.bundle').classList.contains('is-visible')"), true);
+      await b.ev("document.querySelector('.bundle').scrollIntoView({behavior: 'instant'})");
+      await b.waitFor("document.querySelector('.bundle').classList.contains('is-visible')");
+      await heroAt(b, 0, width);
       assert.deepEqual(b.errors, []);
       assert.deepEqual(b.consoleErrors, []);
 
       const detail = payload.items[0];
       await clickRoute(b, '.service-link', `#/chung/C-06?id=${detail.id}`, 'Đơn giá');
       await b.go(landing);
-      await clickRoute(b, '.hero-intro a', '#/chung/C-05', 'Danh mục dịch vụ');
+      await clickRoute(b, '.hero__hint a', '#/chung/C-05', 'Danh mục dịch vụ');
       await b.go(landing);
       if (width === 390) await b.click('.menu-toggle');
       await clickRoute(b, '#site-nav a[href$="C-01"]', '#/chung/C-01', 'Đăng nhập bằng số điện thoại');
@@ -176,17 +215,19 @@ try {
       await b.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
       await b.go(landing);
       await b.waitFor("document.querySelectorAll('.service').length === 3");
+      await b.waitFor("document.querySelector('.hero--static')");
+      await heroAt(b, 1, width, true);
       await b.ev("document.querySelector('.bundle').scrollIntoView()");
       const reduced = await b.ev(`(() => ({
         matches: matchMedia('(prefers-reduced-motion: reduce)').matches,
         scroll: getComputedStyle(document.documentElement).scrollBehavior,
-        hero: getComputedStyle(document.querySelector('.hero-entrance')).animationName,
-        cta: getComputedStyle(document.querySelector('.hero-intro a')).transitionDuration,
+        cta: getComputedStyle(document.querySelector('.hero__hint a')).transitionDuration,
         visible: getComputedStyle(document.querySelector('.bundle')).opacity,
         reveals: document.querySelectorAll('.is-visible').length,
       }))()`);
-      assert.deepEqual(reduced, { matches: true, scroll: 'auto', hero: 'none', cta: '0s', visible: '1', reveals: 0 });
+      assert.deepEqual(reduced, { matches: true, scroll: 'auto', cta: '0s', visible: '1', reveals: 0 });
       await noOverflow(b);
+      if (width === 1440) await capturePage(b, width, height);
       assert.deepEqual(b.errors, []);
       assert.deepEqual(b.consoleErrors, []);
       console.log(`[landing] PASS ${width}x${height}: API and labels, filters, routes, motion, no overflow or browser errors`);

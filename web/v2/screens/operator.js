@@ -486,7 +486,7 @@ async function today(ctx) {
     activeSection,
     packages.length
       ? ui.section('Gói việc chờ bắt đầu ca',
-        ...pendingCards,
+        h('div', { class: 'card-grid' }, pendingCards),
         ui.button({ label: 'Tải lại trạng thái', icon: 'arrows-clockwise', kind: 'secondary', size: 'sm', onClick: () => ctx.rerender() }))
       : null,
     historyList ? ui.section('Lịch sử ca máy', historyList) : null);
@@ -541,7 +541,7 @@ async function jobs(ctx) {
         h('span', { class:'small muted' }, `${j.wageType ? ({PER_HA:'Theo ha',PER_SHIFT:'Theo ca',NEGOTIABLE:'Thỏa thuận'}[j.wageType] || '') : 'Chưa nêu tiền công'}${j.wageAmountVnd ? ` · ${ui.fmt.vnd(Number(j.wageAmountVnd))}` : ''}${j.machineType ? ` · ${j.machineType}` : ''}`),
         (j.requiredSkills || []).length ? h('span', { class:'small muted' }, `Kỹ năng: ${j.requiredSkills.join(', ')}`) : null);
     });
-    listBox.replaceChildren(h('ul', { class: 'list op-jobs' }, items.map((n) => h('li', null, n))));
+    listBox.replaceChildren(h('ul', { class: 'list list--grid op-jobs' }, items.map((n) => h('li', null, n))));
   }
 
   const searchInput = ui.input({

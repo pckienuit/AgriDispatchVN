@@ -8,13 +8,13 @@ trigger:
   batch: true
   branches:
     include:
-      - cloud/is402-2026-11-24
+      - main
 
 # Pull requests run the Validate stage only: no variable group, no self-hosted agent, no Jenkins call, no deploy.
 pr:
   branches:
     include:
-      - cloud/is402-2026-11-24
+      - main
 
 parameters:
   - name: publish
@@ -59,7 +59,7 @@ stages:
   - stage: Terraform
     displayName: Terraform format, validate and mocked contract tests (no Azure calls)
     dependsOn: Validate
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/cloud/is402-2026-11-24'), ne(variables['Build.Reason'], 'PullRequest'))
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
       - job: TerraformValidate
         displayName: Validate infra/terraform with pinned Terraform 1.17.2
@@ -100,7 +100,7 @@ stages:
     dependsOn:
       - Validate
       - Terraform
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/cloud/is402-2026-11-24'), ne(variables['Build.Reason'], 'PullRequest'))
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'PullRequest'))
     variables:
       - group: agridispatch-cloud-ci
     jobs:
@@ -149,7 +149,7 @@ stages:
   - stage: Deploy
     displayName: Deploy to Azure (manual gate, off unless cloudReady)
     dependsOn: Build
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/cloud/is402-2026-11-24'), ${{ eq(parameters.cloudReady, true) }}, ${{ eq(parameters.publish, true) }}, ne(variables['Build.Reason'], 'PullRequest'))
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ${{ eq(parameters.cloudReady, true) }}, ${{ eq(parameters.publish, true) }}, ne(variables['Build.Reason'], 'PullRequest'))
     variables:
       - group: agridispatch-cloud-ci
     jobs:
