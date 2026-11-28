@@ -144,6 +144,25 @@ test('bootstrapDatabase refuses unmigrated DB, then creates least-privilege SCRA
   await assert.rejects(() => bookPool.query('CREATE TABLE dispatch.evil (x int)'), /permission denied/);
   await assert.rejects(() => bookPool.query('TRUNCATE dispatch.services'), /permission denied/);
 
+  for (const table of ['provider_bank_accounts', 'deposit_holds']) {
+    const relation = `dispatch.${table}`;
+    const { rows: [grants] } = await ctx.pool.query(`SELECT
+      has_table_privilege($1, $3, 'SELECT') AS account_read,
+      has_table_privilege($2, $3, 'SELECT') AS booking_read,
+      has_table_privilege($2, $3, 'INSERT') AS booking_insert,
+      has_table_privilege($2, $3, 'UPDATE') AS booking_update,
+      has_table_privilege($2, $3, 'DELETE') AS booking_delete`, [roles.account, roles.booking, relation]);
+    assert.deepEqual(grants, { account_read: false, booking_read: true, booking_insert: true, booking_update: true, booking_delete: false });
+  }
+
+  await assert.rejects(() => accPool.query('SELECT * FROM dispatch.user_notifications'), { code: '42501' });
+  await assert.rejects(() => accPool.query("SELECT dispatch.publish_user_notification(NULL,'TEST',NULL,NULL,'Test',NULL,'{}')"), { code: '42501' });
+  await assert.rejects(() => bookPool.query('DELETE FROM dispatch.user_notifications'), { code: '42501' });
+  const { rows: [notice] } = await bookPool.query(
+    "INSERT INTO dispatch.user_notifications (recipient_user_id,event_type,title) VALUES(gen_random_uuid(),'TEST','Test') RETURNING id",
+  );
+  assert.equal((await bookPool.query('UPDATE dispatch.user_notifications SET read_at = now() WHERE id = $1', [notice.id])).rowCount, 1);
+
   // Allowed narrow read on account.users(id, name).
   await bookPool.query('SELECT id, name FROM account.users LIMIT 1');
 

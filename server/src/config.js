@@ -7,7 +7,15 @@ export function readBookingConfig(env = process.env) {
   const hops = env.TRUST_PROXY_HOPS ?? '0';
   if (!/^(?:[0-9]|10)$/.test(hops)) throw new Error('Invalid trusted proxy configuration');
   const cidrs = env.TRUSTED_PROXY_CIDRS === undefined ? null : env.TRUSTED_PROXY_CIDRS.split(',').map(s => s.trim());
-  return { ...base, accountServiceUrl: env.ACCOUNT_SERVICE_URL, internalServiceToken: token, trustedProxyHops: Number(hops), trustedProxyCidrs: cidrs, servicesCacheMs: readServicesCacheMs(env) };
+  const sweepMs = env.DEPOSIT_EXPIRY_SWEEP_INTERVAL_MS ?? '300000';
+  if (!/^\d{1,10}$/.test(sweepMs) || Number(sweepMs) > 2147483647) throw new Error('DEPOSIT_EXPIRY_SWEEP_INTERVAL_MS must be an integer between 0 and 2147483647');
+  return { ...base, accountServiceUrl: env.ACCOUNT_SERVICE_URL, internalServiceToken: token, trustedProxyHops: Number(hops), trustedProxyCidrs: cidrs, servicesCacheMs: readServicesCacheMs(env), depositExpiryHours: readDepositExpiryHours(env), depositExpirySweepIntervalMs: Number(sweepMs) };
+}
+
+export function readDepositExpiryHours(env = process.env) {
+  const text = env.DEPOSIT_EXPIRY_HOURS ?? '24';
+  if (!/^[1-9][0-9]{0,2}$/.test(text) || Number(text) > 720) throw new Error('DEPOSIT_EXPIRY_HOURS must be an integer between 1 and 720');
+  return Number(text);
 }
 
 // Optional public service list cache in ms (CL-12). Unset or 0 keeps the cache off.

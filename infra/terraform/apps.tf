@@ -59,6 +59,7 @@ resource "azurerm_linux_web_app" "booking" {
     EVIDENCE_BLOB_ACCOUNT_URL             = azurerm_storage_account.evidence.primary_blob_endpoint
     EVIDENCE_CONTAINER                    = local.evidence_container
     THUMBNAIL_CONTAINER                   = local.thumbnail_container
+    EVIDENCE_INLINE_THUMBNAILS            = "false"
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
     TRUST_PROXY_HOPS                      = "1"
   }
@@ -123,6 +124,7 @@ resource "azurerm_linux_web_app_slot" "staging" {
     EVIDENCE_BLOB_ACCOUNT_URL             = azurerm_storage_account.evidence.primary_blob_endpoint
     EVIDENCE_CONTAINER                    = local.evidence_container
     THUMBNAIL_CONTAINER                   = local.thumbnail_container
+    EVIDENCE_INLINE_THUMBNAILS            = "false"
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
     TRUST_PROXY_HOPS                      = "1"
   }

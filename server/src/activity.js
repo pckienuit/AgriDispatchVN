@@ -16,6 +16,7 @@ const LABELS = {
   'booking.BOOKING_GROUPED': 'Yêu cầu đã được gom vào gói dịch vụ',
   'booking.BOOKING_ASSIGNED': 'Yêu cầu đã được phân công',
   'booking.BOOKING_CANCELLED': 'Yêu cầu đã bị hủy',
+  'booking.BOOKING_DEPOSIT_EXPIRED': 'Yêu cầu đã bị hủy do hết hạn đặt cọc',
   'recruitment.job.created': 'Tin tuyển việc đã được đăng',
   'recruitment.job.closed': 'Tin tuyển việc đã đóng',
   'recruitment.application.created': 'Đơn ứng tuyển đã được nộp',

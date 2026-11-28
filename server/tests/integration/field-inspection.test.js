@@ -211,16 +211,16 @@ test('start needs a current HTX pass for every booking; FAILED blocks and explic
   const f = await fixture();
   const [b0, b1] = f.bookingIds;
   for (const bookingId of f.bookingIds) assert.equal((await ready(bookingId)).status, 200);
-  assert.equal((await start(f.packageId)).body.error.code, 'INSPECTION_INCOMPLETE');
+  assert.equal((await start(f.packageId)).body.error.code, 'FIELD_INSPECTION_REQUIRED');
 
   assert.equal((await inspect(b0)).status, 201);
-  assert.equal((await start(f.packageId)).body.error.code, 'INSPECTION_INCOMPLETE');
+  assert.equal((await start(f.packageId)).body.error.code, 'FIELD_INSPECTION_REQUIRED');
   const operatorView = (await get('/api/shift-packages', OPERATOR)).body.packages.find((p) => p.id === f.packageId);
   assert.equal(operatorView.ready, true);
   assert.equal(operatorView.inspected, false);
 
   assert.equal((await inspect(b1, FAIL())).status, 201);
-  assert.equal((await start(f.packageId)).body.error.code, 'INSPECTION_INCOMPLETE');
+  assert.equal((await start(f.packageId)).body.error.code, 'FIELD_INSPECTION_NOT_PASSED');
   const failed = await inspections(b1, FARMER);
   assert.equal(failed.body.passed, false);
   assert.equal(failed.body.latest.result, 'FAILED');
@@ -252,7 +252,7 @@ test('farmer readiness stays independent of HTX, and any later readiness edit ma
   assert.equal((await ready(b0)).status, 200);
   // The same flags as before are a new readiness event, so the earlier PASS no longer matches.
   assert.equal((await inspections(b0)).body.passed, false);
-  assert.equal((await start(f.packageId)).body.error.code, 'INSPECTION_INCOMPLETE');
+  assert.equal((await start(f.packageId)).body.error.code, 'FIELD_INSPECTION_REQUIRED');
 
   assert.equal((await inspect(b0)).status, 201);
   assert.equal((await start(f.packageId)).status, 201);
@@ -266,7 +266,7 @@ test('a schedule change after HTX pass makes the pass stale until re-inspection'
   }
   // Stands in for an applied postponement, which changes the package window. Postponement routes have their own suite.
   await ctx.pool.query("UPDATE dispatch.packages SET window_start_at = window_start_at + interval '1 hour' WHERE id = $1", [f.packageId]);
-  assert.equal((await start(f.packageId)).body.error.code, 'INSPECTION_INCOMPLETE');
+  assert.equal((await start(f.packageId)).body.error.code, 'FIELD_INSPECTION_REQUIRED');
   assert.equal((await inspections(f.bookingIds[0])).body.passed, false);
   for (const bookingId of f.bookingIds) assert.equal((await inspect(bookingId)).status, 201);
   assert.equal((await start(f.packageId)).status, 201);
@@ -312,7 +312,7 @@ test('start and HTX inspection serialize on the package lock; the outcome is alw
     } else {
       // Inspection won the lock: the start must see the fresh FAILED result.
       assert.equal(started.status, 409);
-      assert.equal(started.body.error.code, 'INSPECTION_INCOMPLETE');
+      assert.equal(started.body.error.code, 'FIELD_INSPECTION_REQUIRED');
       assert.equal(late.status, 201);
       assert.equal(shifts, 0);
     }
@@ -401,6 +401,9 @@ test('migration 019 adds no pass rows; unstarted pre-existing packages need a fr
   await copyFile(join(MIGRATIONS, migration), join(dir, migration));
   assert.deepEqual(await migrate(pool, dir), [migration]);
   assert.equal(await count('SELECT count(*)::int AS n FROM dispatch.field_inspections', [], pool), 0);
+  await assert.rejects(pool.query("INSERT INTO dispatch.shifts (package_id, status) VALUES ($1, 'RUNNING')", [pending.packageId]), { code: '23001' });
+  // Current route code requires the current schema; the check above isolates the 019 backstop.
+  assert.ok((await migrate(pool)).includes('029_provider_bank_vietqr_expiry.sql'));
 
   const url = await serve(pool, (app, db) => app.use(createShiftRouter({ pool: db, authenticate: testAuthenticate })));
   servers2.push(...servers.splice(servers.length - 1, 1));
@@ -411,7 +414,7 @@ test('migration 019 adds no pass rows; unstarted pre-existing packages need a fr
   assert.equal((await api('POST', `/api/shifts/${running.shiftId}/resume`, OPERATOR, {})).status, 200);
 
   // Unstarted legacy package: readiness is kept, but no pass is implied.
-  assert.equal((await api('POST', `/api/packages/${pending.packageId}/shifts/start`, OPERATOR, {})).body.error.code, 'INSPECTION_INCOMPLETE');
+  assert.equal((await api('POST', `/api/packages/${pending.packageId}/shifts/start`, OPERATOR, {})).body.error.code, 'FIELD_INSPECTION_REQUIRED');
   assert.equal((await api('GET', `/api/bookings/${pending.bookingId}/inspections`, COOP)).body.passed, false);
   assert.equal((await api('GET', `/api/bookings/${pending.bookingId}/inspections`, FARMER)).body.passed, false);
   assert.equal((await api('POST', `/api/bookings/${pending.bookingId}/inspections`, COOP, PASS)).status, 201);

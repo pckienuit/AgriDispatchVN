@@ -6,6 +6,7 @@ import { createFieldDetailsRouter } from './field-details.js';
 import { createAccountAuth } from './service-auth.js';
 import { createBookingRouter } from './booking.js';
 import { createAccountGateway } from './account-gateway.js';
+import { sessionCookie } from './auth/session-cookie.js';
 import { createRecruitmentRouter } from './recruitment.js';
 import { createWorkforceRouter } from './workforce.js';
 import { createDispatchRouter } from './dispatch.js';
@@ -18,12 +19,13 @@ import { createActivityRouter } from './activity.js';
 import { createRequestContext } from './observability.js';
 import { createPostponementRouter } from './postponement.js';
 import { createEvidenceRouter } from './evidence.js';
+import { createRealtimeRouter } from './realtime-events.js';
 import { createCoopTerritoriesRouter } from './coop-territories.js';
 import { createLocalServiceExtensionsRouter } from './local-service-extensions.js';
 import { createPlatformControlsRouter } from './platform-controls.js';
 const { AbortSignal } = globalThis;
 
-export function createApp({ pool, accountServiceUrl, internalServiceToken, trustedProxyHops = 0, trustedProxyCidrs = null, buildSha = 'development', log, evidenceStore = null, servicesCacheMs = 0 }) {
+export function createApp({ pool, accountServiceUrl, internalServiceToken, trustedProxyHops = 0, trustedProxyCidrs = null, buildSha = 'development', log, evidenceStore = null, servicesCacheMs = 0, depositExpiryHours }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(createRequestContext({serviceName:'booking-service',buildSha,log}));
@@ -48,6 +50,12 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken, trust
       res.status(503).json({ status: 'unavailable' });
     }
   });
+  app.get('/api/me', (req, res, next) => {
+    if (req.get('Prefer') === 'anonymous' && req.get('Authorization') === undefined && !sessionCookie(req.get('Cookie'))) {
+      return res.set('Cache-Control', 'no-store').status(204).end();
+    }
+    return next();
+  });
   if (accountServiceUrl !== undefined || internalServiceToken !== undefined) {
     const authenticate = createAccountAuth({ accountServiceUrl, internalServiceToken });
     app.use(createAccountGateway({ accountServiceUrl, internalServiceToken, trustedProxyHops, trustedProxyCidrs }));
@@ -65,8 +73,9 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken, trust
     app.use(createActivityRouter({ pool, authenticate }));
     app.use(createPostponementRouter({ pool, authenticate }));
     app.use(createEvidenceRouter({ pool, authenticate, store:evidenceStore }));
+    app.use(createRealtimeRouter({ pool, authenticate }));
     app.use(createCoopTerritoriesRouter({ pool, authenticate }));
-    app.use(createLocalServiceExtensionsRouter({ pool, authenticate }));
+    app.use(createLocalServiceExtensionsRouter({ pool, authenticate, depositExpiryHours }));
     app.use(createPlatformControlsRouter({ pool, authenticate }));
   }
   app.use(express.static(fileURLToPath(new URL('../../web/', import.meta.url)), { dotfiles: 'deny' }));

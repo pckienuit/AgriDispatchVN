@@ -65,9 +65,10 @@ async function apply(db,ctx,proposal){
     JSON.stringify(proposal.required_actors)!==JSON.stringify(ctx.required))throw fail(409,'STALE_VERSION');
   const keys=[`machine:${pkg.machine_id}`,`operator:${pkg.operator_id}`].sort();
   for(const key of keys)await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',[key]);
-  const machine=(await db.query(`SELECT m.machine_type,m.status,s.code FROM dispatch.machines m JOIN dispatch.services s ON s.id=$3
+  const machine=(await db.query(`SELECT m.machine_type,m.status,s.code,s.machine_type AS service_machine_type
+    FROM dispatch.machines m JOIN dispatch.services s ON s.id=$3
     WHERE m.id=$1 AND m.owner_id=$2 FOR SHARE OF m`,[pkg.machine_id,pkg.provider_id,pkg.service_id])).rows[0];
-  if(!machine||machine.status!=='available'||machine.machine_type!==TYPES[machine.code])throw fail(409,'MACHINE_UNAVAILABLE');
+  if(!machine||machine.status!=='available'||machine.machine_type!==(machine.service_machine_type??TYPES[machine.code]))throw fail(409,'MACHINE_UNAVAILABLE');
   const accepted=await db.query(`SELECT 1 FROM dispatch.offers o JOIN dispatch.jobs j ON j.id=o.job_id
     JOIN account.user_roles r ON r.user_id=o.operator_id AND r.role='operator'
     WHERE o.operator_id=$1 AND o.status='ACCEPTED' AND j.provider_id=$2 AND j.start_at<=$3 AND j.end_at>=$4 LIMIT 1`,

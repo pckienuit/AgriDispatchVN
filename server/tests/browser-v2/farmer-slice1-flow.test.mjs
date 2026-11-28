@@ -90,7 +90,9 @@ async function check(name, fn) {
 }
 
 async function signInUi(phone) {
-  await browser.go(`${origin}/v2/`);
+  // A deliberate actor switch needs an empty browser cookie jar.
+  await browser.send('Network.clearBrowserCookies');
+  await browser.go(`${origin}/v2/?signin=${Date.now()}#/chung/C-01`);
   await browser.waitFor(`location.hash.startsWith('#/chung/C-01')`);
   await browser.waitFor('!!document.querySelector("input[name=phone]")');
   await browser.fill('input[name=phone]', phone);
@@ -214,8 +216,9 @@ async function runAt(width) {
     assert.equal(await bookingCount(farmer.id), 2, 'retry created a duplicate');
   });
 
-  // ---- Đọc lại sau khi tải lại trang (token chỉ nằm trong bộ nhớ, nên đăng nhập lại rồi đọc từ API).
-  await signInUi(farmer.phone);
+  // ---- Tải lại trang và đọc lại dữ liệu qua phiên cookie hiện tại.
+  await browser.send('Page.reload');
+  await browser.waitFor("performance.getEntriesByType('navigation')[0]?.type === 'reload'");
   await check(`${w} after reload: F-02 shows the stored field with the server area`, async () => {
     await browser.hash('#/nong-dan/F-02');
     await browser.waitText(fieldName);

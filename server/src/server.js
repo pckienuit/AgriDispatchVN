@@ -1,20 +1,32 @@
 import { createApp } from './app.js';
 import { readBookingConfig } from './config.js';
 import { createPool } from './db.js';
+import { expireOverdueDeposits } from './local-service-extensions.js';
 import { configuredEvidenceStore } from './local-evidence-store.js';
 
 try {
   const config = readBookingConfig();
   const pool = createPool(config.databaseUrl);
-  const server = createApp({ pool, accountServiceUrl: config.accountServiceUrl, internalServiceToken: config.internalServiceToken, trustedProxyHops: config.trustedProxyHops, trustedProxyCidrs: config.trustedProxyCidrs, servicesCacheMs: config.servicesCacheMs, buildSha:process.env.BUILD_SHA ?? 'development', evidenceStore:configuredEvidenceStore(process.env) }).listen(config.port, '0.0.0.0');
+  const server = createApp({ pool, accountServiceUrl: config.accountServiceUrl, internalServiceToken: config.internalServiceToken, trustedProxyHops: config.trustedProxyHops, trustedProxyCidrs: config.trustedProxyCidrs, servicesCacheMs: config.servicesCacheMs, depositExpiryHours: config.depositExpiryHours, buildSha:process.env.BUILD_SHA ?? 'development', evidenceStore:configuredEvidenceStore(process.env) }).listen(config.port, '0.0.0.0');
   server.once('listening', () => {
     console.log(`Listening on port ${config.port}`);
   });
+  let sweepRunning = false;
+  const sweepTimer = config.depositExpirySweepIntervalMs > 0
+    ? globalThis.setInterval(async () => {
+      if (sweepRunning) return;
+      sweepRunning = true;
+      try { await expireOverdueDeposits(pool); }
+      catch (error) { console.error('Deposit expiry sweep failed', { name: error.name, code: error.code }); }
+      finally { sweepRunning = false; }
+    }, config.depositExpirySweepIntervalMs).unref()
+    : null;
   let stopping = false;
   function shutdown(code = 0) {
     if (code) process.exitCode = code;
     if (stopping) return;
     stopping = true;
+    globalThis.clearInterval(sweepTimer);
     process.exitCode = code;
     const deadline = setTimeout(() => process.exit(1), 10000);
     deadline.unref();

@@ -115,12 +115,16 @@ async function createClaimedPackage({ owners = [FARMER], area = 10000, provider 
   return { packageId, bookings, bookingIds: bookings.map((b) => b.id), day };
 }
 
-async function startAndOptionallyComplete(pkg, { completeArea = null } = {}) {
+async function passInspections(pkg) {
   for (const bId of pkg.bookingIds) {
     const owner = (await ctx.pool.query('SELECT owner_id FROM dispatch.bookings WHERE id = $1', [bId])).rows[0].owner_id;
     assert.equal((await post(`/api/bookings/${bId}/readiness`, ALL_TRUE, owner)).status, 200);
     assert.equal((await post(`/api/bookings/${bId}/inspections`, { result: 'PASSED' }, COOP)).status, 201);
   }
+}
+
+async function startAndOptionallyComplete(pkg, { completeArea = null } = {}) {
+  await passInspections(pkg);
   const started = await post(`/api/packages/${pkg.packageId}/shifts/start`, {}, OPERATOR);
   assert.equal(started.status, 201);
   const shiftId = started.body.shift.id;
@@ -163,6 +167,8 @@ before(async () => {
   await ctx.pool.query("INSERT INTO dispatch.machines (id, owner_id, name, machine_type) VALUES ($1, $2, 'Synthetic combine', 'harvester')", [MACHINE, PROVIDER]);
   await ctx.pool.query("INSERT INTO dispatch.machines (id, owner_id, name, machine_type) VALUES ($1, $2, 'Synthetic combine dual', 'harvester')", [MACHINE_DUAL, DUAL]);
   ctx.url = await listen(ctx.pool);
+  assert.equal((await call('PUT', '/api/provider/bank-account', PROVIDER,
+    { bankBin: '970436', bankName: 'Ngân hàng kiểm thử', accountNumber: '001234567890', accountHolder: 'Chủ máy kiểm thử' })).status, 200);
 });
 
 after(async () => {
@@ -183,13 +189,13 @@ test('D5 deposit: requires claimed package and explicit HTX call confirmation by
   assert.equal(openView.status, 200);
   assert.equal(openView.body.permissions.canReport, false);
   assert.equal(openView.body.permissions.blockReason, 'BOOKING_UNAVAILABLE');
-  assert.equal(openView.body.vietqrExample, null);
+  assert.equal(openView.body.expiresAt, null);
 
   // Claimed package still blocks deposit until assigned HTX confirms call.
   const pkg = await createClaimedPackage();
   const [b0] = pkg.bookingIds;
   assert.equal((await post(`/api/bookings/${b0}/deposit`, { reference: 'DEP-WAIT-1' }, FARMER)).body.error.code, 'HTX_CALL_NOT_CONFIRMED');
-  assert.equal((await get(`/api/bookings/${b0}/deposit`, FARMER)).body.vietqrExample, null);
+  assert.equal((await get(`/api/bookings/${b0}/deposit`, FARMER)).body.expiresAt, null);
 
   // Role and scope guards on HTX call confirmation.
   for (const actor of [FARMER, PROVIDER, OPERATOR, ADMIN]) {
@@ -221,24 +227,24 @@ test('D5 deposit: requires claimed package and explicit HTX call confirmation by
   assert.equal((await get(`/api/packages/${pkg.packageId}/deposit-call-confirmation`, OTHER_COOP)).status, 404);
 });
 
-test('D5 deposit: server-derived 10% snapshot, safe VietQR example, payer report, independent payee confirm, idempotency', async () => {
+test('D5 deposit: server-derived 10% snapshot, real VietQR, payer report, independent payee confirm, idempotency', async () => {
   const pkg = await createClaimedPackage({ area: 10000 });
   const b0 = pkg.bookings[0].id;
   const bookingTotal = pkg.bookings[0].total_vnd;
   const expected10 = ((BigInt(bookingTotal) + 5n) / 10n).toString();
   assert.equal((await post(`/api/packages/${pkg.packageId}/deposit-call-confirmation`, {}, COOP)).status, 201);
 
+  await passInspections(pkg);
   const preview = await get(`/api/bookings/${b0}/deposit`, FARMER);
   assert.equal(preview.status, 200);
   assert.equal(preview.body.snapshot.expectedDepositVnd, expected10);
   assert.equal(preview.body.snapshot.depositRatePercent, 10);
   assert.equal(preview.body.snapshot.hypothetical, true);
   assert.equal(preview.body.permissions.canReport, true);
-  assert.equal(preview.body.vietqrExample.simulated, true);
-  assert.equal(preview.body.vietqrExample.hypothetical, true);
-  assert.equal(preview.body.vietqrExample.transferCapable, false);
-  assert.equal(preview.body.vietqrExample.amountVnd, expected10);
-  assert.match(preview.body.vietqrExample.analyticPayload, /NON_PAYABLE$/);
+  const qr = await get(`/api/bookings/${b0}/vietqr`, FARMER);
+  assert.equal(qr.status, 200);
+  assert.equal(qr.body.vietqr.amountVnd, expected10);
+  assert.ok(qr.body.expiresAt);
 
   // Tampered amount rejected; foreign payer / wrong role rejected.
   assert.equal((await post(`/api/bookings/${b0}/deposit`, { reference: 'DEP-BAD-AMT', amountVnd: '1000' }, FARMER)).body.error.code, 'DEPOSIT_AMOUNT_MISMATCH');
@@ -298,6 +304,7 @@ test('D5 deposit: concurrent report race, party conflict, dispute freeze, combin
   const racePkg = await createClaimedPackage();
   const bRace = racePkg.bookingIds[0];
   assert.equal((await post(`/api/packages/${racePkg.packageId}/deposit-call-confirmation`, {}, COOP)).status, 201);
+  await passInspections(racePkg);
   const [r1, r2] = await Promise.all([
     post(`/api/bookings/${bRace}/deposit`, { reference: 'DEP-RACE-A' }, FARMER),
     post(`/api/bookings/${bRace}/deposit`, { reference: 'DEP-RACE-B' }, FARMER),
@@ -310,6 +317,7 @@ test('D5 deposit: concurrent report race, party conflict, dispute freeze, combin
   const dispPkg = await createClaimedPackage({ owners: [FARMER, OTHER_FARMER] });
   const [b1, b2] = dispPkg.bookingIds;
   assert.equal((await post(`/api/packages/${dispPkg.packageId}/deposit-call-confirmation`, {}, COOP)).status, 201);
+  await passInspections(dispPkg);
   const dep2 = (await post(`/api/bookings/${b2}/deposit`, { reference: 'DEP-DISP-2' }, OTHER_FARMER)).body.deposit.id;
   await ctx.pool.query(
     "INSERT INTO dispatch.disputes (booking_id, claimant_id, respondent_id, reason, status) VALUES ($1, $2, $3, 'PAYMENT', 'OPEN')",
@@ -328,6 +336,7 @@ test('D5 deposit: concurrent report race, party conflict, dispute freeze, combin
   const fullTotal = BigInt(fullPkg.bookings[0].total_vnd);
   const depAmt = (fullTotal + 5n) / 10n;
   assert.equal((await post(`/api/packages/${fullPkg.packageId}/deposit-call-confirmation`, {}, COOP)).status, 201);
+  await passInspections(fullPkg);
   const depCreated = await post(`/api/bookings/${bFull}/deposit`, { reference: 'DEP-ACC-1' }, FARMER);
   const depositId = depCreated.body.deposit.id;
   await startAndOptionallyComplete(fullPkg, { completeArea: 10000 });
@@ -373,6 +382,7 @@ test('D5 settlement exposes confirmed deposits above a reduced agreement without
   const pkg = await createClaimedPackage();
   const [bookingId] = pkg.bookingIds;
   assert.equal((await post(`/api/packages/${pkg.packageId}/deposit-call-confirmation`, {}, COOP)).status, 201);
+  await passInspections(pkg);
   const created = await post(`/api/bookings/${bookingId}/deposit`, { reference: 'DEP-EXCESS' }, FARMER);
   assert.equal(created.status, 201);
   const { id: depositId, amountVnd } = created.body.deposit;

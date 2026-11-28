@@ -8,9 +8,11 @@ import {
   signClientIdentity,
 } from './client-identity.js';
 import { sanitizeRequestId } from './observability.js';
+import { crossOriginWrite, isSecure, sessionCookie, SESSION_COOKIE, SESSION_ID } from './auth/session-cookie.js';
 
 const { AbortSignal } = globalThis;
-const routes = new Set(['POST /api/auth/register', 'POST /api/auth/login', 'POST /api/auth/logout', 'GET /api/me']);
+const routes = new Set(['POST /api/auth/register', 'POST /api/auth/login', 'POST /api/auth/logout', 'GET /api/me',
+  'GET /api/auth/sessions', 'POST /api/auth/change-password', 'POST /api/auth/forgot-password', 'POST /api/auth/reset-password']);
 
 // Same-origin browser adapter, not a generic proxy. No internal endpoint or arbitrary target forwarding.
 export function createAccountGateway({
@@ -29,7 +31,15 @@ export function createAccountGateway({
   return async (req, res, next) => {
     const roleList=req.method==='GET'&&['/api/role-requests','/api/admin/role-requests'].includes(req.path);
     const roleWrite=req.method==='POST'&&(req.path==='/api/role-requests'||/^\/api\/admin\/role-requests\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(approve|reject)$/i.test(req.path));
-    if (!routes.has(`${req.method} ${req.path}`)&&!roleList&&!roleWrite) return next();
+    const sessionDelete = req.method === 'DELETE' && /^\/api\/auth\/sessions\/[^/]+$/.test(req.path);
+    if (!routes.has(`${req.method} ${req.path}`)&&!roleList&&!roleWrite&&!sessionDelete) return next();
+    res.set('Cache-Control', 'no-store');
+    if ((req.get('Authorization') === undefined || ['/api/auth/login', '/api/auth/register'].includes(req.path)) && crossOriginWrite(req)) {
+      return res.status(403).json({ error: { code: 'CROSS_ORIGIN_REQUEST' } });
+    }
+    if (sessionDelete && !SESSION_ID.test(req.path.slice('/api/auth/sessions/'.length))) {
+      return res.status(400).json({ error: { code: 'INVALID_REQUEST' } });
+    }
     const target=new URL(req.path,origin);
     if(roleList){
       const query=new URL(req.originalUrl,'http://gateway.invalid').searchParams;
@@ -38,12 +48,18 @@ export function createAccountGateway({
         target.searchParams.set(key,value);
       }
     }
-    res.set('Cache-Control', 'no-store');
     try {
       const headers = { 'Content-Type': 'application/json' };
       const requestId = sanitizeRequestId(req.requestId) ?? sanitizeRequestId(req.get('X-Request-ID')) ?? (signingKey ? randomUUID() : null);
       if (requestId) headers['X-Request-ID'] = requestId;
-      if (req.get('Authorization')) headers.Authorization = req.get('Authorization');
+      const authorization = req.get('Authorization');
+      if (authorization !== undefined) headers.Authorization = authorization;
+      const cookie = sessionCookie(req.get('Cookie'));
+      if (cookie) headers.Cookie = `${SESSION_COOKIE}=${cookie}`;
+      if (isSecure(req)) headers['X-Forwarded-Proto'] = 'https';
+      if (req.path === '/api/auth/login' && req.get('Prefer') === 'session-cookie') headers.Prefer = 'session-cookie';
+      const userAgent = req.get('User-Agent');
+      if (userAgent) headers['User-Agent'] = userAgent;
       if (signingKey) {
         const clientIp = resolveClientIp(req, { trustedProxyHops: hops, trustedProxyList });
         if (clientIp) {
@@ -61,6 +77,8 @@ export function createAccountGateway({
         ...(req.method === 'POST' ? { body: JSON.stringify(req.body ?? {}) } : {}),
         signal: AbortSignal.timeout(timeoutMs), redirect: 'error',
       });
+      const cookies = response.headers.getSetCookie().filter((value) => value.startsWith(`${SESSION_COOKIE}=`));
+      if (cookies.length) res.set('Set-Cookie', cookies);
       if (response.status === 204) return res.status(204).end();
       const reader = response.body.getReader();
       let size = 0;

@@ -1,7 +1,7 @@
 import express from 'express';
 import {Buffer} from 'node:buffer';
 import {createHash,randomUUID} from 'node:crypto';
-import {inspectEvidenceImage} from './evidence-image.js';
+import {createEvidenceThumbnail,inspectEvidenceImage,isEvidenceThumbnail} from './evidence-image.js';
 import {parsePagination} from './catalog.js';
 import {isActiveMediatorIndependent} from './disputes.js';
 
@@ -30,7 +30,14 @@ async function caseAccess(db,caseId,actor,{write=false,lock=false}={}){
 }
 export function createEvidenceRouter({pool,authenticate,store=null}){
   if(typeof pool?.connect!=='function'||typeof authenticate!=='function')throw new TypeError('Evidence requires database and authentication');
-  if(store!==null&&['put','get','remove'].some(key=>typeof store[key]!=='function'))throw new TypeError('Invalid evidence storage');
+  if(store!==null&&(['put','get','remove'].some(key=>typeof store[key]!=='function')||
+    (store.inlineThumbnails&&typeof store.putThumbnail!=='function')))throw new TypeError('Invalid evidence storage');
+  async function removeStored(key){
+    try{await store.remove(key);}catch{/* orphan remains private; no success claim */}
+    if(store.inlineThumbnails){
+      try{await store.remove(key,{thumbnail:true});}catch{/* best-effort orphan cleanup */}
+    }
+  }
   const router=express.Router();
   const handle=work=>async(req,res,next)=>{
     try{
@@ -72,23 +79,30 @@ export function createEvidenceRouter({pool,authenticate,store=null}){
     });
     if(created.replay)return res.json({evidence:dto(created.row)});
     const row=created.row;let stored;
-    try{stored=await store.put(row.object_key,bytes,row.content_type);}
-    catch{
-      await pool.query("UPDATE dispatch.evidence SET status='FAILED' WHERE id=$1 AND status='PENDING'",[row.id]);
-      try{await store.remove(row.object_key);}catch{/* orphan remains private; no success claim */}
+    try{
+      const thumb=store.inlineThumbnails?await createEvidenceThumbnail(bytes,row.object_key):null;
+      stored=await store.put(row.object_key,bytes,row.content_type);
+      if(thumb)await store.putThumbnail(row.object_key,thumb);
+    }catch(error){
+      const failed=await pool.query("UPDATE dispatch.evidence SET status='FAILED' WHERE id=$1 AND status='PENDING'",[row.id]);
+      if(failed.rowCount)await removeStored(row.object_key);
+      if(error.code==='INVALID_IMAGE')throw error;
       throw fail(503,'STORAGE_UNAVAILABLE');
     }
     // Commit outcome may be unknown; retain private bytes so a retry can inspect the hash-bound row.
     const final=await transaction(pool,async db=>{
         const d=await db.query('SELECT status FROM dispatch.disputes WHERE id=$1 FOR UPDATE',[row.dispute_id]);
-        if(d.rows[0]?.status!=='OPEN'){
-          await db.query("UPDATE dispatch.evidence SET status='FAILED' WHERE id=$1 AND status='PENDING'",[row.id]);return null;
+        const current=(await db.query('SELECT * FROM dispatch.evidence WHERE id=$1 FOR UPDATE',[row.id])).rows[0];
+        if(current.status==='UPLOADED')return {row:current,replay:true};
+        if(d.rows[0]?.status!=='OPEN'||current.status!=='PENDING'){
+          const failed=await db.query("UPDATE dispatch.evidence SET status='FAILED' WHERE id=$1 AND status='PENDING'",[row.id]);
+          return {cleanup:failed.rowCount>0};
         }
-        return (await db.query(`UPDATE dispatch.evidence SET status='UPLOADED',etag=$2,blob_version=$3,uploaded_at=clock_timestamp()
-          WHERE id=$1 AND status='PENDING' RETURNING *`,[row.id,stored.etag,stored.versionId])).rows[0];
+        return {row:(await db.query(`UPDATE dispatch.evidence SET status='UPLOADED',etag=$2,blob_version=$3,uploaded_at=clock_timestamp()
+          WHERE id=$1 RETURNING *`,[row.id,stored.etag,stored.versionId])).rows[0]};
       });
-    if(!final){try{await store.remove(row.object_key);}catch{/* best-effort orphan cleanup */}throw fail(409,'DISPUTE_NOT_OPEN');}
-    res.status(201).json({evidence:dto(final)});
+    if(!final.row){if(final.cleanup)await removeStored(row.object_key);throw fail(409,'DISPUTE_NOT_OPEN');}
+    res.status(final.replay?200:201).json({evidence:dto(final.row)});
   }));
   router.get('/api/disputes/:id/evidence',authenticate,handle(async(req,res)=>{
     const caseId=identifier(req.params.id);await caseAccess(pool,caseId,req.actor);
@@ -101,10 +115,26 @@ export function createEvidenceRouter({pool,authenticate,store=null}){
     const row=(await pool.query("SELECT * FROM dispatch.evidence WHERE id=$1 AND status='UPLOADED'",[identifier(req.params.id)])).rows[0];
     if(!row)throw fail(404,'NOT_FOUND');await caseAccess(pool,row.dispute_id,req.actor);
     if(!store)throw fail(503,'STORAGE_UNAVAILABLE');
-    const thumbnail=kind==='thumbnail',result=await store.get(row.object_key,{thumbnail});
-    if(!result)throw fail(404,thumbnail?'THUMBNAIL_PENDING':'CONTENT_UNAVAILABLE');
-    if(!Buffer.isBuffer(result.bytes)||(!thumbnail&&(result.bytes.length!==row.byte_size||hash(result.bytes)!==row.sha256))||
-      (thumbnail&&result.contentType!=='image/jpeg'))throw fail(503,'STORAGE_UNAVAILABLE');
+    const thumbnail=kind==='thumbnail';
+    const getOriginal=async()=>{
+      const original=await store.get(row.object_key,{maxBytes:row.byte_size});
+      if(!original)throw fail(404,'CONTENT_UNAVAILABLE');
+      if(!Buffer.isBuffer(original.bytes)||original.contentType!==row.content_type||
+        original.bytes.length!==row.byte_size||hash(original.bytes)!==row.sha256)throw fail(503,'STORAGE_UNAVAILABLE');
+      return original;
+    };
+    let result=thumbnail?await store.get(row.object_key,{thumbnail:true}):await getOriginal();
+    if(thumbnail&&!result&&store.inlineThumbnails){
+      const original=await getOriginal();
+      let bytes;
+      try{bytes=await createEvidenceThumbnail(original.bytes,row.object_key);}
+      catch(error){if(error.code==='INVALID_IMAGE')throw fail(503,'STORAGE_UNAVAILABLE');throw error;}
+      await caseAccess(pool,row.dispute_id,req.actor);
+      await store.putThumbnail(row.object_key,bytes);
+      result={bytes,contentType:'image/jpeg'};
+    }
+    if(!result)throw fail(404,'THUMBNAIL_PENDING');
+    if(thumbnail&&(result.contentType!=='image/jpeg'||!isEvidenceThumbnail(result.bytes)))throw fail(503,'STORAGE_UNAVAILABLE');
     await caseAccess(pool,row.dispute_id,req.actor);
     res.set({'Content-Type':thumbnail?'image/jpeg':row.content_type,'X-Content-Type-Options':'nosniff','Content-Disposition':thumbnail?'inline':'attachment',
       'Content-Security-Policy':"default-src 'none'; sandbox"});res.send(result.bytes);
