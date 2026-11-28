@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   buildSimulatedTelemetry,
-  buildSimulatedVietqrExample,
   computeActiveElapsedSeconds,
   createLocalServiceExtensionsRouter,
   deriveHypotheticalCommissionVnd,
@@ -61,18 +60,6 @@ test('validators reject invalid bodies, unknown fields, and malformed instants',
   const q = validateCommissionQuery({ from: '2026-12-01T00:00:00Z', to: '2026-12-02T00:00:00Z', limit: '10', offset: '0' });
   assert.equal(q.limit, 10);
   assert.equal(q.offset, 0);
-});
-
-test('buildSimulatedVietqrExample is strictly synthetic and non-payable', () => {
-  const ex = buildSimulatedVietqrExample('10000000-0000-4000-8000-000000000001', '900000', '90000');
-  assert.equal(ex.simulated, true);
-  assert.equal(ex.hypothetical, true);
-  assert.equal(ex.transferCapable, false);
-  assert.equal(ex.bankBin, '970400-SIMULATED');
-  assert.equal(ex.accountNumber, 'SIM-0000-0000');
-  assert.equal(ex.amountVnd, '90000');
-  assert.match(ex.analyticPayload, /NON_PAYABLE$/);
-  assert.equal(buildSimulatedVietqrExample('10000000-0000-4000-8000-000000000001', '0', '0'), null);
 });
 
 test('computeActiveElapsedSeconds and buildSimulatedTelemetry derive from phase and server clock', () => {

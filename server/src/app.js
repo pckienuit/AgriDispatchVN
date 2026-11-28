@@ -23,7 +23,7 @@ import { createLocalServiceExtensionsRouter } from './local-service-extensions.j
 import { createPlatformControlsRouter } from './platform-controls.js';
 const { AbortSignal } = globalThis;
 
-export function createApp({ pool, accountServiceUrl, internalServiceToken, trustedProxyHops = 0, trustedProxyCidrs = null, buildSha = 'development', log, evidenceStore = null, servicesCacheMs = 0 }) {
+export function createApp({ pool, accountServiceUrl, internalServiceToken, trustedProxyHops = 0, trustedProxyCidrs = null, buildSha = 'development', log, evidenceStore = null, servicesCacheMs = 0, depositExpiryHours }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(createRequestContext({serviceName:'booking-service',buildSha,log}));
@@ -66,7 +66,7 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken, trust
     app.use(createPostponementRouter({ pool, authenticate }));
     app.use(createEvidenceRouter({ pool, authenticate, store:evidenceStore }));
     app.use(createCoopTerritoriesRouter({ pool, authenticate }));
-    app.use(createLocalServiceExtensionsRouter({ pool, authenticate }));
+    app.use(createLocalServiceExtensionsRouter({ pool, authenticate, depositExpiryHours }));
     app.use(createPlatformControlsRouter({ pool, authenticate }));
   }
   app.use(express.static(fileURLToPath(new URL('../../web/', import.meta.url)), { dotfiles: 'deny' }));

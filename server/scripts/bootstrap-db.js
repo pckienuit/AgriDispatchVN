@@ -60,6 +60,8 @@ export const DISPATCH_TABLES = Object.freeze([
   'package_call_confirmations',
   'deposits',
   'deposit_events',
+  'provider_bank_accounts',
+  'deposit_holds',
   'platform_parameter_versions',
   'job_reports',
   'platform_control_events',
@@ -274,7 +276,8 @@ export async function bootstrapDatabase(pool, { roles = DEFAULT_ROLES, passwords
     await client.query(`GRANT USAGE ON SCHEMA dispatch TO ${qBook}`);
     for (const table of DISPATCH_TABLES) {
       await client.query(`REVOKE ALL ON TABLE dispatch.${qIdent(table)} FROM ${qAcc}, ${qBook}`);
-      await client.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE dispatch.${qIdent(table)} TO ${qBook}`);
+      const privileges = ['provider_bank_accounts', 'deposit_holds'].includes(table) ? 'SELECT, INSERT, UPDATE' : 'SELECT, INSERT, UPDATE, DELETE';
+    await client.query(`GRANT ${privileges} ON TABLE dispatch.${qIdent(table)} TO ${qBook}`);
     }
     await client.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA dispatch TO ${qBook}`);
     await client.query(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA dispatch TO ${qBook}`);
