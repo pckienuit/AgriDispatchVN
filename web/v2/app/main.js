@@ -1,5 +1,5 @@
 // Product UI shell: hash router, role frames, session and API wiring. Screens come from ../screens/*.js.
-// Session token lives only in module memory (same rule as the cloud UI): reloading the page signs out.
+// Restore the user from the same-origin HttpOnly session cookie before routing.
 import { createApiClient } from '../../api.js';
 import { ui } from '../kit/ui.js';
 import { ROLES, codeAllowedInRole, homeSlugFor, navFor, parseHash, url } from './routes.js';
@@ -14,27 +14,23 @@ const mount = doc.getElementById('app');
 const built = new Set(registry.keys());
 const PUBLIC = new Set(['C-01', 'C-04', 'C-05', 'C-06']);
 
-const session = { token: null, user: null, expiresAt: null, timer: null };
+const session = { user: null, timer: null };
 const api = createApiClient({
-  getToken: () => session.token,
+  useSessionCookie: true,
   onUnauthorized: () => {
-    if (session.token) signOut('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+    if (session.user) signOut('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
   },
 });
 
 function signIn(data) {
-  session.token = data.token;
   session.user = data.user;
-  session.expiresAt = data.expiresAt;
   globalThis.clearTimeout(session.timer);
   const left = Date.parse(data.expiresAt) - Date.now();
   if (left > 0 && left < 2 ** 31) session.timer = globalThis.setTimeout(() => signOut('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'), left);
 }
 
 function signOut(message) {
-  session.token = null;
   session.user = null;
-  session.expiresAt = null;
   globalThis.clearTimeout(session.timer);
   if (message) ui.toast(message, 'error');
   loc.hash = url('chung', 'C-01');
@@ -43,8 +39,11 @@ function signOut(message) {
 async function logout() {
   try {
     await api.request('POST', '/api/auth/logout', { auth: true });
-  } catch {
-    // Local sign-out still happens; the server session expires on its own.
+  } catch (error) {
+    if (error.status !== 401) {
+      ui.toast(errorText(error), 'error');
+      return;
+    }
   }
   signOut();
 }
@@ -99,7 +98,7 @@ function makeCtx(route, screen, mySeq) {
     h,
     user: session.user,
     built,
-    session: { signIn, signOut, logout, refreshUser, homeHash, isSignedIn: () => Boolean(session.token) },
+    session: { signIn, signOut, logout, refreshUser, homeHash, isSignedIn: () => Boolean(session.user) },
     url,
     go: (hash) => { loc.hash = hash; },
     rerender: () => { if (mySeq === seq) render(true); },
@@ -220,7 +219,7 @@ async function render(keepFocus) {
   lastHash = hash;
 
   if (route.kind === 'home') {
-    loc.replace(session.token ? homeHash() : url('chung', 'C-01'));
+    loc.replace(session.user ? homeHash() : url('chung', 'C-01'));
     return;
   }
   if (route.kind === 'role') {
@@ -241,7 +240,7 @@ async function render(keepFocus) {
     currentRouteKey = null;
     return paint(deny(route, 'khong-tim-thay', `Màn ${route.code} chưa có trong vai trò ${route.role.name}`), focusMain);
   }
-  if (!PUBLIC.has(route.code) && !session.token) {
+  if (!PUBLIC.has(route.code) && !session.user) {
     loc.replace(url('chung', 'C-01', { tiep: hash.slice(1) }));
     return;
   }
@@ -286,8 +285,17 @@ async function render(keepFocus) {
 }
 
 export { render };
-globalThis.addEventListener('hashchange', () => render(false));
 globalThis.addEventListener('offline', () => ui.toast('Mất kết nối mạng. Thao tác chưa được gửi; thử lại khi có mạng.', 'error'));
-render(false).catch((error) => {
+async function start() {
+  try {
+    const { data } = await api.request('GET', '/api/me', { headers: { Prefer: 'anonymous' } });
+    if (data) signIn(data);
+  } catch (error) {
+    if (error.status !== 401) throw error;
+  }
+  globalThis.addEventListener('hashchange', () => render(false));
+  await render(false);
+}
+start().catch((error) => {
   mount.replaceChildren(ui.errorState({ title: 'Không mở được ứng dụng', text: errorText(error) }));
 });

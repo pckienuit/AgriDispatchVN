@@ -13,6 +13,8 @@ async function sessions(f, userId) {
 test('TC-10 đăng nhập hợp lệ, đọc phiên, đăng xuất thu hồi', async (t) => {
   const f = await fixture(t);
   const u = await f.user(1, { login: false });
+  const registered = await sessions(f, u.id);
+  assert.equal(registered.length, 1);
   const login = await f.request('POST', '/api/auth/login', { body: u.credentials });
   assert.equal(login.status, 200);
   const { token, expiresAt } = login.body;
@@ -21,22 +23,25 @@ test('TC-10 đăng nhập hợp lệ, đọc phiên, đăng xuất thu hồi', a
   const publicUser = { id: u.id, phone: u.credentials.phone, email: null, name: u.name, roles: ['farmer'] };
   assert.deepEqual(login.body.user, publicUser);
   const token_hash = createHash('sha256').update(token).digest('hex');
-  assert.deepEqual(await sessions(f, u.id), [{ token_hash, revoked: false }]);
+  assert.deepEqual((await sessions(f, u.id)).filter((row) => row.token_hash !== token_hash), registered);
+  assert.deepEqual((await sessions(f, u.id)).find((row) => row.token_hash === token_hash), { token_hash, revoked: false });
   const [{ password_hash: hash }] = await f.rows('SELECT password_hash FROM account.users WHERE id = $1', [u.id]);
   assert.ok(hash.startsWith('scrypt:v1:') && !JSON.stringify(login.body).includes(hash), 'password hash must stay in DB');
   assert.deepEqual(await f.request('GET', '/api/me', { token }), { status: 200, body: { user: publicUser } });
   assert.deepEqual(await f.request('POST', '/api/auth/logout', { token }), { status: 204, body: null });
   assert.deepEqual(await f.request('GET', '/api/me', { token }), invalid(401, 'UNAUTHORIZED'));
-  assert.deepEqual(await sessions(f, u.id), [{ token_hash, revoked: true }]);
+  assert.deepEqual((await sessions(f, u.id)).filter((row) => row.token_hash !== token_hash), registered);
+  assert.deepEqual((await sessions(f, u.id)).find((row) => row.token_hash === token_hash), { token_hash, revoked: true });
 });
 
 test('TC-11 sai mật khẩu không tạo phiên', async (t) => {
   const f = await fixture(t);
   const u = await f.user(1, { login: false });
   const before = await f.rows('SELECT id, phone, name, created_at FROM account.users WHERE id = $1', [u.id]);
+  const beforeSessions = await sessions(f, u.id);
   const body = { ...u.credentials, password: 'WrongBtth5!123' };
   assert.deepEqual(await f.request('POST', '/api/auth/login', { body }), invalid(401, 'INVALID_CREDENTIALS'));
-  assert.deepEqual(await sessions(f, u.id), []);
+  assert.deepEqual(await sessions(f, u.id), beforeSessions);
   assert.deepEqual(await f.rows('SELECT id, phone, name, created_at FROM account.users WHERE id = $1', [u.id]), before);
 });
 

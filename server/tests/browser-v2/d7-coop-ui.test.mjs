@@ -645,10 +645,9 @@ try {
   await assertLayout('P-10-open-1440');
   await browser.shot(`${SHOTS}/p10-open-1440.png`);
 
-  // Reload drops the in-memory session; sign in again and read the response back from UI and API.
+  // Read the response back from UI and API with the same session after reload.
   await browser.send('Page.reload', { ignoreCache: true });
-  await loginAs(provider);
-  await browser.hash(`#/chu-may/P-10?id=${d3.id}`);
+  await browser.waitFor("performance.getEntriesByType('navigation')[0]?.type === 'reload'");
   await browser.waitText(token);
   const readbackProvider = await responsesOf(d3.id, provider.token);
   assert.equal(readbackProvider.length, 1, 'reload readback must return the single persisted response');

@@ -20,11 +20,9 @@ async function signIn(b, credentials) {
   await b.click('form button[type=submit]');
 }
 
-async function reloadAndSignIn(b, credentials) {
-  // Deliberate product policy: reload clears the in-memory browser session.
+async function reloadWithCookie(b) {
   await b.send('Page.reload');
-  await b.waitFor("location.hash.startsWith('#/chung/C-01?tiep=')");
-  await signIn(b, credentials);
+  await b.waitFor("performance.getEntriesByType('navigation')[0]?.type === 'reload'");
 }
 
 test('TC-16 mật khẩu sai giữ ở C-01, nhập lại đúng quay về F-02', async (t) => {
@@ -35,7 +33,7 @@ test('TC-16 mật khẩu sai giữ ở C-01, nhập lại đúng quay về F-02'
     await signIn(b, { ...farmer.credentials, password: 'WrongBtth5!123' });
     await b.waitText('Số điện thoại hoặc mật khẩu không đúng.');
     assert.match(await b.ev('location.hash'), /^#\/chung\/C-01/);
-    assert.deepEqual(await f.rows('SELECT user_id FROM account.sessions'), []);
+    assert.deepEqual(await f.rows('SELECT user_id FROM account.sessions'), [{ user_id: farmer.id }]); // Registration already created a session.
     await signIn(b, farmer.credentials);
     await b.waitFor("location.hash === '#/nong-dan/F-02'");
     await b.waitText('Thửa ruộng');
@@ -44,7 +42,9 @@ test('TC-16 mật khẩu sai giữ ở C-01, nhập lại đúng quay về F-02'
     await b.waitText(farmer.name);
     await b.hash('#/htx/H-01');
     await b.waitText('Tài khoản chưa có quyền xem nội dung này');
-    assert.deepEqual(await f.rows('SELECT user_id, revoked_at FROM account.sessions'), [{ user_id: farmer.id, revoked_at: null }]);
+    assert.deepEqual(await f.rows('SELECT user_id, revoked_at FROM account.sessions'), [
+      { user_id: farmer.id, revoked_at: null }, { user_id: farmer.id, revoked_at: null },
+    ]);
     assert.deepEqual(b.errors, []);
   } finally { await b.close(); }
 });
@@ -80,7 +80,7 @@ test('TC-17 đặt dịch vụ qua F-05, F-06, F-07; tải lại vẫn đọc đ
     await b.waitFor("location.hash.startsWith('#/nong-dan/F-07?id=')");
     const path = await b.ev('location.href');
     // Use a full page reload, not a repeated navigation to the same hash.
-    await reloadAndSignIn(b, farmer.credentials);
+    await reloadWithCookie(b);
     await b.waitFor("location.hash.startsWith('#/nong-dan/F-07?id=') && document.querySelector('#main')?.innerText.includes('Tổng tạm tính')");
     await b.waitText(FIELD.name);
     await b.waitText('Đã gửi yêu cầu');
@@ -106,7 +106,7 @@ test('TC-18 mở lại báo giá có thông tin vụ, quay về sửa giữ nguy
     await b.clickText('Xem bảng giá và xác nhận', 'button');
     await b.waitFor("location.hash.startsWith('#/nong-dan/F-06')");
     await b.waitText('Tổng tạm tính');
-    await reloadAndSignIn(b, farmer.credentials);
+    await reloadWithCookie(b);
     await b.waitFor("location.hash.startsWith('#/nong-dan/F-06') && document.querySelector('#main')?.innerText.includes('Tổng tạm tính')");
     await b.clickText('Sửa thông tin đặt dịch vụ', 'a');
     await b.waitFor("location.hash.startsWith('#/nong-dan/F-05') && !!document.querySelector('input[name=endLocal]')");

@@ -65,9 +65,11 @@ async function person(role, name) {
   return { id: user.id, phone, role };
 }
 
-// Real sign-in through the v2 form. Reloading /v2/ clears the in-memory session, so each actor starts clean.
+// Real sign-in through the v2 form, with a clean cookie jar for each actor.
 async function signIn(who) {
-  await browser.go(`${origin}/v2/`);
+  // A deliberate actor switch needs an empty browser cookie jar.
+  await browser.send('Network.clearBrowserCookies');
+  await browser.go(`${origin}/v2/?signin=${Date.now()}#/chung/C-01`);
   await browser.waitFor('!!document.querySelector("input[name=phone]")');
   await browser.fill('input[name=phone]', who.phone);
   await browser.fill('input[name=password]', password);

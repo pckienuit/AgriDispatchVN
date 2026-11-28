@@ -6,6 +6,7 @@ import { createFieldDetailsRouter } from './field-details.js';
 import { createAccountAuth } from './service-auth.js';
 import { createBookingRouter } from './booking.js';
 import { createAccountGateway } from './account-gateway.js';
+import { sessionCookie } from './auth/session-cookie.js';
 import { createRecruitmentRouter } from './recruitment.js';
 import { createWorkforceRouter } from './workforce.js';
 import { createDispatchRouter } from './dispatch.js';
@@ -47,6 +48,12 @@ export function createApp({ pool, accountServiceUrl, internalServiceToken, trust
     } catch {
       res.status(503).json({ status: 'unavailable' });
     }
+  });
+  app.get('/api/me', (req, res, next) => {
+    if (req.get('Prefer') === 'anonymous' && req.get('Authorization') === undefined && !sessionCookie(req.get('Cookie'))) {
+      return res.set('Cache-Control', 'no-store').status(204).end();
+    }
+    return next();
   });
   if (accountServiceUrl !== undefined || internalServiceToken !== undefined) {
     const authenticate = createAccountAuth({ accountServiceUrl, internalServiceToken });

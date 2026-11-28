@@ -1,4 +1,5 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 
 // All queries take a pg Pool or Client. Authorization and validation happen in account-app.js.
 
@@ -54,30 +55,35 @@ export async function findUserByIdentifier(db, identifier) {
   return { id, email: rows[0].email, phone: rows[0].phone, name, passwordHash, roles };
 }
 
-// Each login prunes a bounded batch of expired session rows, so the table stays near live-session size.
-export async function createSession(client, userId, ttlSeconds) {
-  await client.query(
-    'DELETE FROM account.sessions WHERE token_hash IN (SELECT token_hash FROM account.sessions WHERE expires_at <= now() LIMIT 100)',
-  );
+export async function pruneSessions(db) {
+  await db.query(`DELETE FROM account.sessions WHERE id IN (
+    SELECT id FROM account.sessions WHERE expires_at <= now() - interval '24 hours'
+    LIMIT 100 FOR UPDATE SKIP LOCKED
+  )`);
+}
+
+export async function createSession(client, userId, ttlSeconds, { userAgent, ip }) {
   const token = randomBytes(32).toString('base64url');
   const { rows } = await client.query(
-    `INSERT INTO account.sessions (token_hash, user_id, expires_at)
-     VALUES ($1, $2, now() + $3::integer * interval '1 second')
+    `INSERT INTO account.sessions (token_hash, user_id, expires_at, user_agent, ip_summary)
+     VALUES ($1, $2, now() + $3::integer * interval '1 second', $4,
+       CASE WHEN family($5::inet) = 4 THEN network(set_masklen($5::inet, 24))
+            ELSE network(set_masklen($5::inet, 48)) END)
      RETURNING expires_at`,
-    [digest(token), userId, ttlSeconds],
+    [digest(token), userId, ttlSeconds, userAgent, ip],
   );
   return { token, expiresAt: rows[0].expires_at.toISOString() };
 }
 
 export async function findSession(db, token) {
   const { rows } = await db.query(
-    `SELECT u.id, u.email, u.phone, u.name, s.expires_at,
+    `SELECT u.id, u.email, u.phone, u.name, s.id AS session_id, s.expires_at,
             COALESCE(array_agg(r.role ORDER BY r.role) FILTER (WHERE r.role IS NOT NULL), '{}') AS roles
        FROM account.sessions s
        JOIN account.users u ON u.id = s.user_id
        LEFT JOIN account.user_roles r ON r.user_id = u.id
       WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()
-      GROUP BY u.id, s.expires_at`,
+      GROUP BY u.id, s.id, s.expires_at`,
     [digest(token)],
   );
   if (!rows[0]) return null;
@@ -85,7 +91,23 @@ export async function findSession(db, token) {
   return {
     user: { id: row.id, email: row.email, phone: row.phone, name: row.name, roles: row.roles },
     expiresAt: row.expires_at.toISOString(),
+    id: row.session_id,
   };
+}
+
+export async function listSessions(db, userId, currentId) {
+  const { rows } = await db.query(`SELECT id, created_at, expires_at, revoked_at, user_agent, ip_summary::text AS ip
+    FROM account.sessions WHERE user_id = $1 AND expires_at > now() - interval '24 hours'
+    ORDER BY (id = $2) DESC, (revoked_at IS NULL AND expires_at > now()) DESC, created_at DESC, id
+    LIMIT 20`, [userId, currentId]);
+  return rows.map((row) => ({ id: row.id, createdAt: row.created_at.toISOString(), expiresAt: row.expires_at.toISOString(),
+    revokedAt: row.revoked_at?.toISOString() ?? null, userAgent: row.user_agent, ip: row.ip, isCurrent: row.id === currentId }));
+}
+
+export async function revokeOwnedSession(db, userId, id) {
+  const { rowCount } = await db.query(`UPDATE account.sessions SET revoked_at = clock_timestamp()
+    WHERE user_id = $1 AND id = $2 AND revoked_at IS NULL AND expires_at > clock_timestamp()`, [userId, id]);
+  return rowCount === 1;
 }
 
 export async function revokeSession(db, token) {
@@ -94,6 +116,49 @@ export async function revokeSession(db, token) {
     [digest(token)],
   );
   return rowCount === 1;
+}
+
+async function lockResetUser(client, identifier) {
+  const column = identifier.phone === undefined ? 'email' : 'phone';
+  const { rows } = await client.query(`SELECT id, email FROM account.users WHERE ${column} = $1 FOR UPDATE`, [identifier[column]]);
+  return rows[0];
+}
+
+export async function preparePasswordReset(pool, identifier, tokenHash) {
+  await pool.query(`DELETE FROM account.password_reset_tokens WHERE user_id IN (
+    SELECT user_id FROM account.password_reset_tokens WHERE expires_at <= now() LIMIT 100 FOR UPDATE SKIP LOCKED
+  )`);
+  return withTransaction(pool, async (client) => {
+    const user = await lockResetUser(client, identifier);
+    if (!user) return null;
+    await client.query(`INSERT INTO account.password_reset_tokens (user_id, token_hash)
+      VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET token_hash = EXCLUDED.token_hash,
+      expires_at = EXCLUDED.expires_at, used_at = NULL, attempts = 0`, [user.id, tokenHash]);
+    return user;
+  });
+}
+
+export function tryPasswordReset(pool, identifier, tokenHash, maxAttempts, hashNewPassword) {
+  return withTransaction(pool, async (client) => {
+    const user = await lockResetUser(client, identifier);
+    if (!user) return false;
+    const { rows: [reset] } = await client.query(`UPDATE account.password_reset_tokens SET attempts = attempts + 1
+      WHERE user_id = $1 AND used_at IS NULL AND expires_at > clock_timestamp() AND attempts < $2
+      RETURNING token_hash`, [user.id, maxAttempts]);
+    if (!reset || !timingSafeEqual(Buffer.from(reset.token_hash, 'hex'), Buffer.from(tokenHash, 'hex'))) return false;
+    await replacePassword(client, user.id, await hashNewPassword(), null);
+    return true;
+  });
+}
+
+// Caller holds the user lock shared by login, change and reset.
+export async function replacePassword(client, userId, passwordHash, keepSessionId) {
+  await client.query('UPDATE account.users SET password_hash = $2 WHERE id = $1', [userId, passwordHash]);
+  await client.query('UPDATE account.password_reset_tokens SET used_at = clock_timestamp() WHERE user_id = $1 AND used_at IS NULL', [userId]);
+  if (keepSessionId !== false) {
+    await client.query(`UPDATE account.sessions SET revoked_at = clock_timestamp()
+      WHERE user_id = $1 AND revoked_at IS NULL AND ($2::uuid IS NULL OR id <> $2)`, [userId, keepSessionId]);
+  }
 }
 
 // One atomic upsert per attempt: concurrent instances serialize on the bucket row, so the count is exact.

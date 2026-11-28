@@ -62,7 +62,7 @@ async function makeActor(role, n) {
   return { role, phone, id: reg.user.id, token: login.token };
 }
 
-// Each session gets a fresh browser profile (in-memory login only; a hard reload lands on the login screen).
+// Each actor gets a separate browser profile and cookie jar.
 async function session(person, prefix, { width = 390, height = 844, mobile = true } = {}) {
   if (browser) {
     pageErrors.push(...browser.errors);

@@ -43,17 +43,17 @@ export function newIdempotencyKey() {
 }
 // ---- API client -------------------------------------------------------------
 
-export function createApiClient({ fetchImpl = globalThis.fetch, getToken, onUnauthorized = () => {}, timeoutMs = API_TIMEOUT_MS }) {
+export function createApiClient({ fetchImpl = globalThis.fetch, getToken = () => null, onUnauthorized = () => {}, timeoutMs = API_TIMEOUT_MS, useSessionCookie = false }) {
   async function request(method, path, { auth = false, body, headers = {} } = {}) {
     const requestHeaders = { Accept: 'application/json', ...headers };
     if (body !== undefined) requestHeaders['Content-Type'] = 'application/json';
     if (auth) {
       const token = getToken();
-      if (!token) {
+      if (token) requestHeaders.Authorization = `Bearer ${token}`;
+      else if (!useSessionCookie) {
         onUnauthorized();
         throw new ApiError(401, 'UNAUTHENTICATED');
       }
-      requestHeaders.Authorization = `Bearer ${token}`;
     }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -65,7 +65,7 @@ export function createApiClient({ fetchImpl = globalThis.fetch, getToken, onUnau
         headers: requestHeaders,
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
-        credentials: 'omit',
+        credentials: useSessionCookie ? 'same-origin' : 'omit',
         cache: 'no-store',
       });
       if (response.status !== 204) text = await response.text();
@@ -99,12 +99,12 @@ export function createApiClient({ fetchImpl = globalThis.fetch, getToken, onUnau
     const valid=upload ? /^\/api\/disputes\/[0-9a-f-]{36}\/evidence$/i : /^\/api\/evidence\/[0-9a-f-]{36}\/(content|thumbnail)$/i;
     if(!valid.test(path))throw new ApiError(0,'BAD_RESPONSE');
     const token=getToken();
-    if(!token){onUnauthorized();throw new ApiError(401,'UNAUTHENTICATED');}
+    if(!token&&!useSessionCookie){onUnauthorized();throw new ApiError(401,'UNAUTHENTICATED');}
     if(upload&&(!['image/jpeg','image/png'].includes(file?.type)||!Number.isSafeInteger(file.size)||file.size<1||file.size>5242880))throw new ApiError(400,'INVALID_IMAGE');
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
     try {
-      const response=await fetchImpl(path,{method:upload?'POST':'GET',headers:{Authorization:'Bearer '+token,...(upload?{'Content-Type':file.type}: {})},body:file,
-        signal:controller.signal,credentials:'omit',cache:'no-store',redirect:'error'});
+      const response=await fetchImpl(path,{method:upload?'POST':'GET',headers:{...(token ? {Authorization:'Bearer '+token} : {}),...(upload?{'Content-Type':file.type}: {})},body:file,
+        signal:controller.signal,credentials:useSessionCookie?'same-origin':'omit',cache:'no-store',redirect:'error'});
       if(!response.ok){
         const data=await response.json();if(response.status===401)onUnauthorized();
         throw new ApiError(response.status,data?.error?.code??'UNKNOWN',{uncertain:upload&&response.status>=500});
