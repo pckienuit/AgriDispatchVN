@@ -63,23 +63,25 @@ function homeHash() {
   return first ? first.href : url('chung', 'C-02');
 }
 
-function whoLabel(role) {
-  if (!session.user) return role.name;
-  const id = session.user.phone || session.user.email || '';
-  return h('span', { class: 'row row--nowrap' },
-    h('span', null, `${role.name}: ${session.user.name}`),
-    id ? h('span', { class: 'muted small' }, id) : null);
-}
-
 function frame(route, screen, body, action) {
   const role = route.role;
-  const nav = navFor(role.slug, screen?.code, built);
+  const code = screen?.code;
+  const nav = navFor(role.slug, code, built);
   const current = nav.find((n) => n.current);
-  const isRoot = Boolean(current && current.code === screen?.code);
-  const back = screen?.back ?? (nav.length ? (isRoot ? null : { href: current ? current.href : nav[0].href, label: 'Quay lại' }) : (session.user ? { href: homeHash(), label: 'Về trang chính' } : null));
-  const title = screen ? screen.title : 'Không tìm thấy';
-  if (role.frame === 'mobile') return ui.mobileFrame({ title, back, tabs: nav.length ? nav : null, body, action, isRoot });
-  return ui.deskFrame({ size: role.frame === 'tablet' ? 'tablet' : 'desk', nav: nav.length ? nav : null, who: whoLabel(role), body, action, isRoot, back, brand: 'AgriDispatch VN' });
+  const isRoot = Boolean(current && current.code === code);
+  const back = screen?.back ?? (nav.length
+    ? (isRoot ? null : { href: (current || nav[0]).href })
+    : (session.user && code !== 'C-02' ? { href: homeHash(), label: 'Về trang chính' } : null));
+  const title = role.frame === 'mobile' ? screen?.title || 'Không tìm thấy' : null;
+  const who = session.user && code !== 'C-02' ? h('a', {
+    class: 'btn btn--ghost shell-account', href: url(role.slug, 'C-02'), 'aria-label': 'Tài khoản', title: session.user.name,
+  }, ui.icon('user')) : null;
+  const desktopNav = role.slug === 'chung' ? [
+    { href: '/landing/', label: 'Giới thiệu' },
+    { href: url('chung', 'C-05'), label: 'Danh mục dịch vụ', current: code === 'C-05' || code === 'C-06' },
+  ] : nav;
+  return ui.deskFrame({ size: role.frame, title, back, nav: desktopNav, tabs: nav, who, body, action, isRoot,
+    brand: 'AgriDispatch VN', focused: ['C-01', 'C-04', 'C-06'].includes(code) });
 }
 
 let seq = 0;
@@ -193,11 +195,12 @@ function restoreFocus(key) {
 
 function paint(node, focusMain, restoreKey, { loading = false } = {}) {
   if (focusMain && !loading) node.querySelector('main')?.classList.add('route-enter');
+  if (focusMain) globalThis.scrollTo(0, 0);
   mount.replaceChildren(node);
   if (restoreKey && restoreFocus(restoreKey)) return;
   if (focusMain) {
     const main = doc.getElementById('main');
-    const heading = main && main.querySelector('h1');
+    const heading = node.querySelector('h1[tabindex="-1"]');
     (heading || main)?.focus?.({ preventScroll: true });
   }
 }

@@ -318,7 +318,7 @@ const doc = root.document;
       tb,
       o.foot ? h('tfoot', null, o.foot) : null
     );
-    return h('div', { class: 'table-wrap' }, (o.rows && o.rows.length) ? t : ui.empty({ title: o.emptyTitle || 'Chưa có dữ liệu', text: o.emptyText }));
+    return h('div', { class: 'table-wrap tbl' }, (o.rows && o.rows.length) ? t : ui.empty({ title: o.emptyTitle || 'Chưa có dữ liệu', text: o.emptyText }));
   };
 
   ui.list = function (items) { return h('ul', { class: 'list' }, items.map(function (i) { return h('li', null, i); })); };
@@ -889,7 +889,11 @@ const doc = root.document;
         }
       }
 
+      var wide = root.matchMedia?.('(min-width: 761px)');
+      var closeOnWide = function () { if (wide.matches) closeMore(false); };
+      wide?.addEventListener('change', closeOnWide);
       ui._cleanups.push(function () {
+        wide?.removeEventListener('change', closeOnWide);
         closeMore(false);
       });
 
@@ -924,55 +928,37 @@ const doc = root.document;
     return { nav: nav, scrim: moreScrim };
   }
 
-  /* Khung di động: thanh tiêu đề, nội dung, tab dưới hoặc thanh hành động. o: {title, back:{href,label}, tabs:[{label,icon,href,current}], body, offline, action, isRoot} */
+  /* Tương thích với màn dùng tên khung cũ; kích thước do CSS theo khung nhìn. */
   ui.mobileFrame = function (o) {
-    o = o || {};
-    var showTabs = !!(o.tabs && o.tabs.length) && !(o.action && !o.isRoot);
-    var actionNode = o.action || null;
-    if (actionNode && showTabs) {
-      actionNode.className = (actionNode.className || '') + ' actionbar--above-tab';
-    }
-    var tabBuilt = showTabs ? buildTabbar(o.tabs, 'tabbar', 'mobile-more-nav') : { nav: null, scrim: null };
-    var appCls = 'app app--mobile role-mobile' + (o.action ? ' app--has-action' : '') + (showTabs ? ' app--has-tab' : '');
-    var appNode = h('div', { class: appCls },
-      h('div', { class: 'app__shell' },
-        h('header', { class: 'mbar' }, o.back ? h('a', { class: 'btn btn--ghost', href: o.back.href, 'aria-label': o.back.label || 'Quay lại' }, ui.icon('arrow-left')) : null, h('h1', null, o.title)),
-        o.offline ? ui.offlineBar(o.offline) : null,
-        h('main', { class: 'mbody', id: 'main', tabindex: '-1' }, o.body)),
-      actionNode,
-      tabBuilt.nav,
-      tabBuilt.scrim);
-    ui.bindReserve(appNode);
-    return appNode;
+    return ui.deskFrame({ ...o, size: 'mobile', nav: o?.tabs });
   };
 
-  /* Khung máy tính thích ứng: điều hướng trên, tab dưới dựng sẵn khi hẹp, bảng trượt nút Thêm. o: {size:'tablet'|'desk', brand, nav:[{label,icon,href,current}], who, body, offline, narrow, action, isRoot, back} */
+  /* Một khung cho mọi vai trò; mật độ theo vai trò, điều hướng theo khung nhìn. */
   ui.deskFrame = function (o) {
     o = o || {};
     var navList = o.nav || [];
-    var showNarrowTab = navList.length > 0 && !(o.action && !o.isRoot);
+    var tabs = o.tabs || navList;
+    var showNarrowTab = tabs.length > 0 && !(o.action && !o.isRoot);
     var actionNode = o.action || null;
-    if (actionNode && showNarrowTab) {
-      actionNode.className = (actionNode.className || '') + ' actionbar--above-tab';
-    }
+    if (actionNode && showNarrowTab) actionNode.classList.add('actionbar--above-tab');
 
-    var tabBuilt = showNarrowTab ? buildTabbar(navList, 'tabbar tabbar--narrow', 'desk-more-nav') : { nav: null, scrim: null };
-
-    var backNode = (o.back && !o.isRoot)
-      ? h('a', { class: 'btn btn--ghost topbar__back', href: o.back.href, 'aria-label': o.back.label || 'Quay lại' }, ui.icon('arrow-left'), o.back.label || 'Quay lại')
+    var tabBuilt = showNarrowTab ? buildTabbar(tabs, 'tabbar tabbar--narrow', 'desk-more-nav') : { nav: null, scrim: null };
+    var backNode = o.back && !o.isRoot
+      ? ui.button({ href: o.back.href, kind: 'ghost', icon: 'arrow-left', ariaLabel: o.back.label || 'Quay lại' })
       : null;
-
-    var appCls = 'app app--desk role-' + (o.size || 'desk') + (o.action ? ' app--has-action' : '') + (showNarrowTab ? ' app--has-tab' : '');
-
+    var appCls = 'frame app app--desk role-' + (o.size || 'desk') + (o.action ? ' app--has-action' : '') + (showNarrowTab ? ' app--has-tab' : '');
+    var wrapClass = 'wrap' + (o.focused ? ' wrap--focused' : '');
     var appNode = h('div', { class: appCls },
       h('header', { class: 'topbar' }, h('div', { class: 'topbar__in' },
-        backNode,
+        backNode && !o.title ? h('div', { class: 'topbar__back' }, backNode) : null,
         h('div', { class: 'brand' }, ui.icon('plant'), o.brand || 'AgriDispatch'),
-        navList.length ? h('nav', { class: 'nav', 'aria-label': 'Điều hướng chính' }, navList.map(function (n) { return h('a', { href: n.href, 'aria-current': n.current ? 'page' : null }, n.icon ? ui.icon(n.icon) : null, n.label); })) : h('div', { class: 'grow' }),
+        navList.length ? h('nav', { class: 'nav', 'aria-label': 'Điều hướng chính' }, navList.map(function (n) {
+          return h('a', { href: n.href, 'aria-current': n.current ? 'page' : null }, n.label);
+        })) : null,
         o.who ? h('div', { class: 'topbar__who' }, o.who) : null)),
       o.offline ? ui.offlineBar(o.offline) : null,
-      h('main', { class: 'wrap' + (o.narrow ? ' wrap--narrow' : ''), id: 'main', tabindex: '-1' },
-        h('div', { class: 'stack' }, o.body, actionNode)),
+      o.title ? h('div', { class: wrapClass + ' mbar' }, backNode, h('h1', { tabindex: '-1' }, o.title)) : null,
+      h('main', { class: wrapClass, id: 'main', tabindex: '-1' }, h('div', { class: 'stack' }, o.body, actionNode)),
       tabBuilt.nav,
       tabBuilt.scrim);
     ui.bindReserve(appNode);

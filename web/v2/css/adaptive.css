@@ -1,148 +1,40 @@
 /* Khung thích ứng theo độ rộng và thành phần dùng chung mới: thanh hành động, bảng trượt, ghi chú, dòng chọn, bảng xếp thẻ. */
 
 /* 1. Thanh trên và điều hướng máy tính thích ứng */
-.app--desk {
-  --topbar-h: 56px;
-}
-
-.app--desk .provider-aside,
-.app--desk .admin-sticky {
-  top: calc(var(--topbar-h, 56px) + var(--sp-4, 16px));
-}
-
-.topbar__back {
-  margin-right: var(--sp-2, 8px);
-}
-
-@media (min-width: 1101px) {
-  .app--desk {
-    --topbar-h: 56px;
-  }
-  .tabbar--narrow {
-    display: none !important;
-  }
-}
+.app--desk { --topbar-h: 68px; }
+.tabbar--narrow { display: none; }
 
 @media (min-width: 761px) {
   .toasts {
-    top: calc(var(--toast-top, 56px) + var(--sp-3, 12px));
+    top: calc(var(--toast-top, 68px) + var(--sp-3));
     bottom: auto;
-    right: var(--sp-4, 16px);
+    right: var(--sp-4);
     left: auto;
     transform: none;
     width: min(360px, calc(100% - 32px));
   }
 }
 
-@media (max-width: 1100px) and (min-width: 761px) {
-  .app--desk {
-    --topbar-h: 96px;
-  }
-  .topbar__in {
-    flex-wrap: wrap;
-    padding: 0 calc(var(--sp-4, 16px) + var(--demo-inset, 0px)) 0 var(--sp-4, 16px);
-    min-height: 96px;
-    align-content: center;
-    gap: var(--sp-2, 8px) var(--sp-4, 16px);
-  }
-  .brand {
-    margin-right: auto;
-    min-width: 0;
-  }
-  .topbar__who {
-    min-width: 0;
-    max-width: 55%;
-  }
-  .topbar__who .row {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 2px var(--sp-2, 8px);
-  }
-  .topbar__who .row > span {
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-  .topbar .nav {
-    width: 100%;
-    flex: 1 0 100%;
-    min-height: 44px;
-    display: flex;
-    gap: var(--sp-1, 4px);
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .topbar .nav a {
-    padding: 0 12px;
-    min-height: 44px;
-    font-size: var(--fs-sm);
-  }
-  .tabbar--narrow {
-    display: none !important;
-  }
+@media (761px <= width < 960px) {
+  .app--desk { --topbar-h: 114px; }
+  .topbar__in { flex-wrap: wrap; gap: 0 var(--sp-4); padding-block: 6px; }
+  .topbar .nav { flex-basis: 100%; order: 1; }
 }
 
 @media (max-width: 760px) {
-  .toasts {
-    top: auto;
-    bottom: calc(var(--toast-bottom, 0px) + var(--sp-4, 16px));
-  }
-  .app--desk {
-    --topbar-h: 56px;
-    font-size: var(--fs, 18px);
-  }
-  .topbar__in {
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--sp-1, 4px) var(--sp-3, 12px);
-    padding: var(--sp-2, 8px) calc(var(--sp-3, 12px) + var(--demo-inset, 0px)) var(--sp-2, 8px) var(--sp-3, 12px);
-    min-height: 56px;
-  }
-  .topbar__back {
-    margin-right: 0;
-    padding: 0 var(--sp-2, 8px);
-    min-height: var(--ctl-h-sm, 44px);
-  }
-  .brand {
-    margin-right: auto;
-    min-width: 0;
-  }
-  .topbar .nav {
-    display: none !important;
-  }
-  .tabbar--narrow {
-    display: flex !important;
-  }
-  .topbar__who {
-    flex: 1 1 100%;
-    min-width: 0;
-    max-width: 100%;
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
-    line-height: 1.35;
-  }
-  .topbar__who .row {
-    flex-wrap: wrap;
-    width: auto;
-    gap: 2px var(--sp-2, 8px);
-  }
-  .topbar__who .row > span {
-    min-width: 0;
-    max-width: 100%;
-    overflow-wrap: anywhere;
-  }
-  .app--desk main {
-    padding-bottom: var(--bottom-reserve, var(--sp-6, 32px));
-  }
-  .app--desk.app--has-tab main {
-    padding-bottom: var(--bottom-reserve, calc(var(--strip, 0px) + 80px));
-  }
-  .app--desk.app--has-action main {
-    padding-bottom: var(--bottom-reserve, calc(var(--strip, 0px) + 96px));
-  }
-  .app--desk.app--has-action.app--has-tab main {
-    padding-bottom: var(--bottom-reserve, calc(var(--strip, 0px) + 160px));
-  }
+  .app--desk { --topbar-h: 64px; }
+  .toasts { top: auto; bottom: calc(var(--toast-bottom, 0px) + var(--sp-4)); }
+  .topbar__in { min-height: 64px; flex-wrap: wrap; gap: 4px var(--sp-3); padding-block: 6px; }
+  .topbar .nav { display: none; }
+  .tabbar--narrow { display: flex; }
+  .topbar__who:has(.row) { flex-basis: 100%; }
+  .topbar__who .row { flex-wrap: wrap; gap: 2px var(--sp-2); overflow-wrap: anywhere; }
+  .app--desk main { padding-bottom: var(--bottom-reserve, var(--sp-6)); }
+  .app--has-tab main { padding-bottom: var(--bottom-reserve, calc(var(--strip) + 80px)); }
+  .app--has-action main { padding-bottom: var(--bottom-reserve, calc(var(--strip) + 96px)); }
+  .app--has-action.app--has-tab main { padding-bottom: var(--bottom-reserve, calc(var(--strip) + 160px)); }
+  .actionbar__in { padding-bottom: max(var(--sp-3), env(safe-area-inset-bottom)); }
+  .tabbar__in { padding-bottom: env(safe-area-inset-bottom); }
 }
 
 /* 2. Nút Thêm và Bảng trượt đáy */
@@ -268,45 +160,7 @@
   gap: var(--sp-3, 12px);
 }
 
-.app--mobile .actionbar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: var(--strip, 0px);
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  background: transparent;
-  border-top: 0;
-  pointer-events: none;
-}
-.app--mobile .actionbar__in {
-  width: 100%;
-  max-width: 480px;
-  background: var(--surface);
-  border-top: 1px solid var(--line-strong, var(--line));
-  pointer-events: auto;
-}
-.app--mobile.app--has-tab .actionbar--above-tab {
-  bottom: calc(var(--strip, 0px) + var(--tabbar-h, 64px));
-}
-.app--mobile main {
-  padding-bottom: var(--bottom-reserve, var(--sp-4, 16px));
-}
-.app--mobile.app--has-tab main {
-  padding-bottom: var(--bottom-reserve, calc(var(--strip, 0px) + 80px));
-}
-.app--mobile.app--has-action main {
-  padding-bottom: var(--bottom-reserve, calc(var(--strip, 0px) + 96px));
-}
-.app--mobile.app--has-action.app--has-tab main {
-  padding-bottom: var(--bottom-reserve, calc(var(--strip, 0px) + 160px));
-}
-
 @media (min-width: 761px) {
-  .topbar__back {
-    display: none;
-  }
   .app--desk .actionbar {
     position: static;
     border-top: 0;
@@ -365,7 +219,6 @@
 
 @media (max-width: 480px) {
   .wrap .btn,
-  .mbody .btn,
   .actionbar .btn,
   .modal .btn {
     white-space: normal;
