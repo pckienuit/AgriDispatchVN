@@ -4,7 +4,15 @@ import { ui } from '../kit/ui.js';
 
 const h = ui.h;
 
+export const DEPOSIT_MESSAGES = {
+  FIELD_INSPECTION_REQUIRED: 'HTX chưa có kết quả kiểm tra thực địa còn hiệu lực.',
+  FIELD_INSPECTION_NOT_PASSED: 'Ruộng chưa đạt kiểm tra thực địa của HTX.',
+  PROVIDER_BANK_ACCOUNT_REQUIRED: 'Chủ máy chưa cung cấp tài khoản nhận cọc.',
+  DEPOSIT_EXPIRED: 'Đã hết hạn chuyển cọc.',
+};
+
 const V2_MESSAGES = {
+  ...DEPOSIT_MESSAGES,
   INVALID_CREDENTIALS: 'Số điện thoại hoặc mật khẩu không đúng.',
   CONFLICT: 'Số điện thoại này đã có tài khoản. Hãy đăng nhập.',
   FORBIDDEN: 'Tài khoản này không có quyền làm thao tác này.',

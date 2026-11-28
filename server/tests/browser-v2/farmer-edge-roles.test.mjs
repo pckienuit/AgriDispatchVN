@@ -101,7 +101,9 @@ async function makeActor(name, role) {
 }
 
 async function signInUi(phone) {
-  await browser.go(`${origin}/v2/`);
+  // A deliberate actor switch needs an empty browser cookie jar.
+  await browser.send('Network.clearBrowserCookies');
+  await browser.go(`${origin}/v2/?signin=${Date.now()}#/chung/C-01`);
   await browser.waitFor(`location.hash.startsWith('#/chung/C-01')`);
   await browser.waitFor('!!document.querySelector("input[name=phone]")');
   await browser.fill('input[name=phone]', phone);
@@ -278,7 +280,8 @@ async function runAt(width) {
 
   // Test-only injection installed before the page loads: first payment POST is committed, then the response is lost.
   await browser.send('Page.addScriptToEvaluateOnNewDocument', { source: DROP_FIRST_PAYMENT_RESPONSE });
-  await signInUi(farmer.phone);
+  await browser.send('Page.reload');
+  await browser.waitFor("performance.getEntriesByType('navigation')[0]?.type === 'reload'");
 
   await browser.hash(`#/nong-dan/F-11?id=${bid}`);
   await browser.waitText('Đồng ý nghiệm thu phiên bản 1');

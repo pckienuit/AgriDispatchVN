@@ -215,9 +215,9 @@ test('start needs the assigned operator, a claimed package and every booking rea
   assert.equal((await ready(b1, { drained: true, mature: true, intakeReady: false })).status, 200);
   assert.equal((await start(f.packageId)).body.error.code, 'READINESS_INCOMPLETE');
   assert.equal((await ready(b1)).status, 200);
-  assert.equal((await start(f.packageId)).body.error.code, 'INSPECTION_INCOMPLETE');
+  assert.equal((await start(f.packageId)).body.error.code, 'FIELD_INSPECTION_REQUIRED');
   assert.equal((await inspect(b0)).status, 201);
-  assert.equal((await start(f.packageId)).body.error.code, 'INSPECTION_INCOMPLETE');
+  assert.equal((await start(f.packageId)).body.error.code, 'FIELD_INSPECTION_REQUIRED');
   assert.equal((await inspect(b1)).status, 201);
   assert.equal((await start(f.packageId)).status, 201);
   assert.equal(await count('SELECT count(*)::int AS n FROM dispatch.shifts WHERE package_id = $1', [f.packageId]), 1);

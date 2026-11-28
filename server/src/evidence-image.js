@@ -20,6 +20,24 @@ const MAX_PIXELS = 16777216;
 const invalid = (message) => new EvidenceImageError(400, 'INVALID_IMAGE', message);
 const tooLarge = (message) => new EvidenceImageError(413, 'PAYLOAD_TOO_LARGE', message); // byte cap only
 
+// Reuse the bounded decoder and metadata-stripping pipeline from the Blob trigger.
+export async function createEvidenceThumbnail(bytes, key) {
+  const { makeThumbnail } = await import('../../functions/thumbnail/processor.cjs');
+  try {
+    return (await makeThumbnail(bytes, key)).bytes;
+  } catch (error) {
+    if (error.code === 'INVALID_IMAGE') throw invalid('Image pixels cannot be decoded');
+    throw error;
+  }
+}
+
+export function isEvidenceThumbnail(bytes) {
+  try {
+    const { width, height } = inspectEvidenceImage(bytes, 'image/jpeg');
+    return width <= 320 && height <= 320;
+  } catch { return false; }
+}
+
 export function inspectEvidenceImage(bytes, contentType) {
   if (contentType !== 'image/png' && contentType !== 'image/jpeg') {
     throw new EvidenceImageError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Only image/png and image/jpeg evidence is accepted');

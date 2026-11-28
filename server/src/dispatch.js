@@ -1,5 +1,7 @@
 import express from 'express';
 import { parsePagination } from './catalog.js';
+import { AREA_UNITS, areaInLocalUnits, haversineKm } from './gis-geometry.js';
+import { PLATFORM_PARAMETER_DEFAULTS } from './platform-controls.js';
 
 // Duplicated from booking.js on purpose: this slice owns only dispatch.js and must not edit the G3 module.
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -66,6 +68,48 @@ export function packageWindow(rows) {
   const start = new Date(Math.max(...rows.map((row) => row.startAt.getTime())));
   const end = new Date(Math.min(...rows.map((row) => row.endAt.getTime())));
   return start < end ? { start, end } : null;
+}
+
+function clusterQueryNumber(value, field, max) {
+  if (value === undefined) return undefined;
+  const number = typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value) ? Number(value) : NaN;
+  if (!Number.isFinite(number) || number <= 0 || number > max) throw fail(field);
+  return number;
+}
+
+function clusterSuggestions(rows, maxDistanceKm, minAreaHa) {
+  // ponytail: first-fit, disjoint groups, not optimal packing. Switch to spatial indexing for larger candidate windows.
+  const groups = [];
+  for (const row of rows) {
+    const member = { bookingId: row.id, fieldId: row.field_id, centroid: { lat: row.centroid_lat, lng: row.centroid_lng } };
+    let joined = false;
+    for (const group of groups) {
+      const startAt = Math.max(group.startAt, row.start_at.getTime());
+      const endAt = Math.min(group.endAt, row.end_at.getTime());
+      if (group.serviceId !== row.service_id || group.locality !== row.locality || startAt >= endAt
+        || group.members.length >= MAX_PACKAGE_BOOKINGS || group.members.some((m) => m.fieldId === member.fieldId)) continue;
+      const pairs = group.members.map((m) => ({ fromBookingId: m.bookingId, toBookingId: member.bookingId,
+        distanceKm: haversineKm(m.centroid.lat, m.centroid.lng, member.centroid.lat, member.centroid.lng) }));
+      if (pairs.some((pair) => pair.distanceKm > maxDistanceKm)) continue;
+      group.members.push(member);
+      group.pairs.push(...pairs);
+      group.areaM2 += row.calculated_area_m2;
+      group.startAt = startAt;
+      group.endAt = endAt;
+      joined = true;
+      break;
+    }
+    if (!joined) groups.push({ serviceId: row.service_id, locality: row.locality, startAt: row.start_at.getTime(), endAt: row.end_at.getTime(),
+      members: [member], pairs: [], areaM2: row.calculated_area_m2 });
+  }
+  return groups.flatMap(({ serviceId, locality, startAt, endAt, members, pairs, areaM2 }) => {
+    const units = areaInLocalUnits(areaM2);
+    if (members.length < 2 || units.areaHa < minAreaHa) return [];
+    pairs.sort((a, b) => a.distanceKm - b.distanceKm);
+    return [{ serviceId, locality, window: { startAt: new Date(startAt).toISOString(), endAt: new Date(endAt).toISOString() },
+      members, pairwiseDistances: pairs, maxPairwiseDistanceKm: pairs.at(-1).distanceKm, areaM2, ...units }];
+  }).sort((a, b) => a.maxPairwiseDistanceKm - b.maxPairwiseDistanceKm || b.areaM2 - a.areaM2
+    || a.members[0].bookingId.localeCompare(b.members[0].bookingId));
 }
 
 function listWindow(query) {
@@ -308,6 +352,30 @@ export function createDispatchRouter({ pool, authenticate }) {
         boatDock: row.boat_dock, incomplete: row.incomplete,
       },
     } });
+  }));
+
+  router.get('/api/coop/cluster-suggestions', authenticate, requireActor(['coop']), handle(async (req, res) => {
+    const maxOverride = clusterQueryNumber(req.query.maxDistanceKm, 'maxDistanceKm', 100);
+    const minOverride = clusterQueryNumber(req.query.minAreaHa, 'minAreaHa', 10000);
+    const settings = await pool.query('SELECT parameters FROM dispatch.platform_parameter_versions ORDER BY version DESC LIMIT 1');
+    const { radiusM, clusterMinHa } = { ...PLATFORM_PARAMETER_DEFAULTS, ...settings.rows[0]?.parameters };
+    const maxDistanceKm = maxOverride ?? radiusM / 1000;
+    const minAreaHa = minOverride ?? clusterMinHa;
+    // Delegation and an active territory assignment are both required. Never infer scope from the locality label.
+    const { rows } = await pool.query(`SELECT b.id, b.field_id, b.service_id, b.start_at, b.end_at,
+        f.locality, f.centroid_lat, f.centroid_lng, f.calculated_area_m2
+      FROM dispatch.bookings b
+      JOIN dispatch.fields f ON f.id = b.field_id AND f.owner_id = b.owner_id
+      JOIN dispatch.location_consents c ON c.owner_id = f.owner_id AND c.withdrawn_at IS NULL
+      WHERE b.coordinator_id = $1 AND b.state = 'REQUESTED' AND b.end_at > now()
+        AND f.calculated_area_m2 IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM dispatch.package_bookings pb WHERE pb.booking_id = b.id)
+        AND EXISTS (SELECT 1 FROM dispatch.commune_territories t WHERE t.coop_id = $1
+          AND t.removed_at IS NULL AND t.province_code = f.province_code AND t.commune_code = f.commune_code)
+      ORDER BY b.start_at, b.created_at, b.id LIMIT 501`, [req.actor.id]);
+    const items = clusterSuggestions(rows.slice(0, 500), maxDistanceKm, minAreaHa);
+    res.set('Cache-Control', 'no-store').json({ items, maxDistanceKm, minAreaHa, truncated: rows.length > 500,
+      ...AREA_UNITS });
   }));
 
   // Coop lists its own delegated REQUESTED bookings. Snapshot name/area/service; locality comes from the live field row.

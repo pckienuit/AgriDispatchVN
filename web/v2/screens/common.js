@@ -95,10 +95,15 @@ function login(ctx) {
       if (!pass) invalid(password.input, 'Nhập mật khẩu.');
       if (register && [...pass].length < 12) invalid(password.input, 'Mật khẩu cần ít nhất 12 ký tự.');
       if (new globalThis.TextEncoder().encode(pass).length > 128) invalid(password.input, 'Mật khẩu quá dài.');
-      if (register) await ctx.api.request('POST', '/api/auth/register', { body: { phone: phoneValue, password: pass, name: nameValue } });
+      if (register) {
+        const { data } = await ctx.api.request('POST', '/api/auth/register', { body: { phone: phoneValue, password: pass, name: nameValue } });
+        return data;
+      }
       const id = email ? { email: phoneValue } : { phone: phoneValue };
       try {
-        const { data: sessionData } = await ctx.api.request('POST', '/api/auth/login', { body: { ...id, password: pass } });
+        const { data: sessionData } = await ctx.api.request('POST', '/api/auth/login', {
+          body: { ...id, password: pass }, headers: { Prefer: 'session-cookie' },
+        });
         return sessionData;
       } catch (error) {
         if (error?.code === 'INVALID_CREDENTIALS' && password.input.value === pass && phone.value.trim() === phoneValue) {

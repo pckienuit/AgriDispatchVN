@@ -340,6 +340,16 @@ test('managed identity provider sends bounded private token request and caches',
   assert.equal(seen.length, 3, 'token inside 60s margin must not be cached');
 });
 
+test('managed identity selects the configured user-assigned identity', async t => {
+  const clientId = '00000000-0000-4000-8000-000000000001';
+  const { url, seen } = await stub(t, (_req, res) => res.writeHead(200).end(JSON.stringify({
+    access_token: TOKEN, expires_on: Math.floor(Date.now() / 1000) + 3600,
+  })));
+  await createManagedIdentityTokenProvider({ endpoint: url, identityHeader: IDENTITY_HEADER, clientId })();
+  assert.equal(new URL(seen[0].path, url).searchParams.get('client_id'), clientId);
+  assert.throws(() => createManagedIdentityTokenProvider({ endpoint: url, identityHeader: IDENTITY_HEADER, clientId: 'bad' }), TypeError);
+});
+
 test('managed identity provider single-flights concurrent refresh', async (t) => {
   const { url, seen } = await stub(t, (req, res) => {
     setTimeout(() => {

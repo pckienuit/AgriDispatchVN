@@ -62,7 +62,7 @@ test('combined migrations and catalog use real account HTTP identity, then fail 
     res.set({'Content-Type':object.contentType,ETag:object.etag}).send(object.bytes);
   });
   const blob=await listen(blobApp);
-  const evidenceStore=createBlobStore({accountUrl:blob.url,allowLoopback:true,getToken:async()=>'synthetic-storage-test-token'});
+  const evidenceStore=createBlobStore({accountUrl:blob.url,allowLoopback:true,inlineThumbnails:false,getToken:async()=>'synthetic-storage-test-token'});
   const booking = await listen(createApp({ pool, accountServiceUrl: account.url, internalServiceToken: secret, evidenceStore, buildSha, log: entry => logs.push(entry) }));
   const post = (url, path, body, token) => fetch(url + path, {
     method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },

@@ -190,9 +190,9 @@ test('expired sessions are rejected and stored as digests only', async (t) => {
   await json(server.url, '/api/auth/register', { email: 'exp@example.com', password: PASSWORD, name: 'E' });
   const session = await (await json(server.url, '/api/auth/login', { email: 'exp@example.com', password: PASSWORD })).json();
   const stored = (await pool.query('SELECT token_hash FROM account.sessions')).rows.map((row) => row.token_hash);
-  assert.equal(stored.length, 1);
-  assert.match(stored[0], /^[0-9a-f]{64}$/);
-  assert.notEqual(stored[0], session.token);
+  assert.equal(stored.length, 2); // Registration and login each issue a session.
+  for (const hash of stored) assert.match(hash, /^[0-9a-f]{64}$/);
+  assert.ok(!stored.includes(session.token));
   // created_at must move with expires_at to satisfy the CHECK that expiry follows creation.
   await pool.query("UPDATE account.sessions SET created_at = now() - interval '2 hours', expires_at = now() - interval '1 second'");
   const expired = await fetch(`${server.url}/api/me`, { headers: bearer(session.token) });

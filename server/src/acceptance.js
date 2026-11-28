@@ -176,7 +176,8 @@ async function financialSummary(client, bookingId, acceptance) {
          SELECT d.amount_vnd, c.id IS NOT NULL, true
            FROM dispatch.deposits d
            LEFT JOIN dispatch.deposit_events c ON c.deposit_id = d.id AND c.event_type = 'DEPOSIT_CONFIRMED'
-          WHERE d.booking_id = $1
+           LEFT JOIN dispatch.deposit_holds h ON h.booking_id = d.booking_id
+          WHERE d.booking_id = $1 AND h.deposit_expired_at IS NULL
        ) amounts`,
     [bookingId],
   );

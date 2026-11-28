@@ -1,7 +1,7 @@
 // Màn thợ lái (O-01, O-03, O-04, O-05, O-06, O-07, O-08) trên API thật.
 
 import { ui } from '../kit/ui.js';
-import { apiButton, apiForm } from '../app/actions.js';
+import { apiButton, apiForm, DEPOSIT_MESSAGES } from '../app/actions.js';
 import { ApiError } from '../../api.js';
 
 const h = ui.h;
@@ -13,6 +13,7 @@ const PAGE_LIMIT = 100;
 const MAX_OFFSET = 10000;
 
 const REFUSAL_MESSAGES = {
+  ...DEPOSIT_MESSAGES,
   READINESS_INCOMPLETE: 'Chủ ruộng chưa xác nhận đủ 3 mục sẵn sàng (rút nước, lúa chín, lối vào).',
   INSPECTION_INCOMPLETE: 'HTX chưa kiểm tra thực địa đạt hoặc kết quả đã cũ. Chưa thể bắt đầu ca.',
   PACKAGE_NOT_CLAIMED: 'Gói việc chưa ở trạng thái đã nhận máy, chưa thể bắt đầu ca.',

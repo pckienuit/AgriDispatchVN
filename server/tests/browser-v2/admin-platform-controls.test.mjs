@@ -182,13 +182,9 @@ try {
     assert.equal(String(events[0].details.version), '1', `event details ${JSON.stringify(events[0].details)}`);
   });
 
-  // Reload drops the in-memory session (token lives in JS memory only); sign in again and read state back from the server.
+  // Read server state after a full reload without signing in again.
   await browser.send('Page.reload', { ignoreCache: true });
-  await browser.waitFor(`location.hash.startsWith('#/chung/C-01')`);
-  await browser.waitFor('!!document.querySelector("input[name=phone]")');
-  await browser.fill('input[name=phone]', PHONE);
-  await browser.fill('input[name=password]', PASSWORD);
-  await browser.click('form button[type=submit]');
+  await browser.waitFor("performance.getEntriesByType('navigation')[0]?.type === 'reload'");
   await browser.waitFor(`location.hash.startsWith('#/quan-tri/A-04')`);
   await browser.waitText('Phiên bản 1');
   await check('A-04 readback after reload: API matches PG (version, reason, radiusM)', async () => {

@@ -1,5 +1,5 @@
 import { ApiError } from '../../api.js';
-import { apiButton, apiForm, errorText } from '../app/actions.js';
+import { apiButton, apiForm, errorText, DEPOSIT_MESSAGES } from '../app/actions.js';
 import { ui } from '../kit/ui.js';
 
 const { h } = ui;
@@ -11,6 +11,7 @@ const callPath = (id) => `/api/packages/${id}/deposit-call-confirmation`;
 const get = async (ctx, path) => (await ctx.api.request('GET', path, { auth: true })).data;
 const post = (ctx, path, body) => ctx.api.request('POST', path, { auth: true, body });
 const blocked = {
+  ...DEPOSIT_MESSAGES,
   HTX_CALL_NOT_CONFIRMED: 'Chờ HTX xác nhận đã gọi',
   BOOKING_UNAVAILABLE: 'Đơn chưa được giao máy hoặc đã hủy.',
   PACKAGE_NOT_CLAIMED: 'Chủ máy chưa nhận gói việc.',
@@ -21,6 +22,7 @@ const blocked = {
 
 function status(view) {
   if (view.deposit?.status === 'CONFIRMED') return ui.badge('Hai bên đã ghi nhận cọc', 'ok');
+  if (view.deposit?.status === 'EXPIRED' || view.permissions.blockReason === 'DEPOSIT_EXPIRED') return ui.badge('Hết hạn cọc', 'warn');
   if (view.deposit?.status === 'REPORTED') return ui.badge('Chờ chủ máy xác nhận đã nhận cọc', 'warn');
   return ui.badge('Chưa báo chuyển cọc', 'outline');
 }
@@ -30,6 +32,36 @@ function loadError(ctx, error) {
   return h('div', { class: 'stack-sm' },
     h('p', { role: 'alert', class: 'msg msg--error' }, errorText(error)),
     ui.button({ label: 'Tải lại thông tin cọc', kind: 'secondary', onClick: () => ctx.rerender() }));
+}
+
+const expiryLabel = (value) => {
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ['Hạn cọc', ui.fmt.dateTime(ms)] : null;
+};
+
+function vietqrCard(ctx, id) {
+  const result = h('div', { class: 'stack-sm', 'aria-live': 'polite' });
+  const issue = apiButton({
+    label: 'Hiện mã VietQR',
+    hint: 'Hạn chuyển cọc bắt đầu khi tạo mã lần đầu.',
+    run: () => post(ctx, `/api/bookings/${id}/vietqr`, {}),
+    onDone({ data }) {
+      if (ctx.stale()) return;
+      const { vietqr, expiresAt } = data;
+      if (!vietqr?.svg || !/^[1-9]\d*$/.test(vietqr.amountVnd)) throw new ApiError(502, 'BAD_RESPONSE');
+      // Render SVG as an image, never as active DOM markup.
+      result.replaceChildren(
+        h('img', { src: `data:image/svg+xml,${encodeURIComponent(vietqr.svg)}`, alt: 'Mã VietQR chuyển cọc cho chủ máy', width: 224, height: 224, style: 'max-width:100%;height:auto' }),
+        ui.kv([
+          ['Ngân hàng', vietqr.bankName || vietqr.bankBin], ['Chủ tài khoản', vietqr.accountHolder],
+          ['Số tài khoản', vietqr.accountNumber], ['Số tiền', money(vietqr.amountVnd)],
+          ['Nội dung chuyển khoản', vietqr.description], expiryLabel(expiresAt),
+        ]),
+      );
+      issue.hidden = true;
+    },
+  });
+  return ui.card({ title: 'Chuyển cọc cho chủ máy', body: h('div', { class: 'stack-sm' }, issue, result) });
 }
 
 export async function farmerDepositScreen(ctx) {
@@ -65,12 +97,14 @@ export async function farmerDepositScreen(ctx) {
       ui.kv([
         ['Mức cọc giả định', `${snapshot.depositRatePercent}% (${money(snapshot.expectedDepositVnd)})`],
         deposit ? ['Số tiền đã báo', money(deposit.amountVnd)] : null,
+        expiryLabel(view.expiresAt),
         htxCallConfirmation?.confirmed ? ['Cuộc gọi', 'HTX đã xác nhận'] : null,
       ]),
       deposit?.status === 'CONFIRMED' ? h('p', { class: 'muted' }, 'Khoản cọc đã xác nhận được trừ khi quyết toán.') : null,
       permissions.blockReason && !deposit?.confirmedAt ? h('p', { class: 'muted' }, blocked[permissions.blockReason] || 'Hiện chưa thể ghi nhận cọc.') : null,
       !form && !deposit && !permissions.blockReason ? h('p', { class: 'muted' }, 'Tài khoản này không thể báo chuyển cọc cho đơn.') : null,
     ) }),
+    form && !vietqrExample ? vietqrCard(ctx, id) : null,
     vietqrExample?.simulated && vietqrExample.transferCapable === false && !deposit && permissions.canReport ? ui.card({
       title: 'Thông tin VietQR mô phỏng',
       subtitle: 'Không dùng để chuyển tiền.',

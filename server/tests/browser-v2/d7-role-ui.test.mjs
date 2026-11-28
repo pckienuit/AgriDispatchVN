@@ -202,14 +202,9 @@ try {
   }
 
   async function loginAs(phone, roleHashPrefix) {
-    await browser.go(v2Base);
-    await browser.waitFor(`location.hash.startsWith('#/chung/C-01')`);
-
-    if (await browser.ev(`!document.querySelector('input[name=phone]')`)) {
-      // Logout first if a session is still active
-      await browser.ev(`(()=>{const b=[...document.querySelectorAll('button')].find(x=>x.textContent.includes('Đăng xuất')); if(b)b.click();})()`);
-      await browser.waitFor(`!!document.querySelector('input[name=phone]')`);
-    }
+    await browser.send('Network.clearBrowserCookies');
+    await browser.go(`${v2Base}?signin=${Date.now()}#/chung/C-01`);
+    await browser.waitFor(`location.hash.startsWith('#/chung/C-01') && !!document.querySelector('input[name=phone]')`);
     await browser.fill('input[name=phone]', phone);
     await browser.fill('input[name=password]', password);
     await browser.click('form button[type=submit]');
