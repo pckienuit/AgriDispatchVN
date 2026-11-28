@@ -1,12 +1,12 @@
 /* Khung thích ứng theo độ rộng và thành phần dùng chung mới: thanh hành động, bảng trượt, ghi chú, dòng chọn, bảng xếp thẻ. */
 
 /* 1. Thanh trên và điều hướng máy tính thích ứng */
-.app--desk { --topbar-h: 68px; }
+.app--desk { --topbar-h: 70px; }
 .tabbar--narrow { display: none; }
 
 @media (min-width: 761px) {
   .toasts {
-    top: calc(var(--toast-top, 68px) + var(--sp-3));
+    top: calc(var(--toast-top, 70px) + var(--sp-3));
     bottom: auto;
     right: var(--sp-4);
     left: auto;
@@ -16,15 +16,21 @@
 }
 
 @media (761px <= width < 960px) {
-  .app--desk { --topbar-h: 114px; }
-  .topbar__in { flex-wrap: wrap; gap: 0 var(--sp-4); padding-block: 6px; }
-  .topbar .nav { flex-basis: 100%; order: 1; }
+  .app--desk:has(.nav a:nth-child(6)) { --topbar-h: 111px; }
+  .topbar__in:has(.nav a:nth-child(6)) { flex-wrap: wrap; gap: 0 var(--sp-4); padding-block: 6px; }
+  .topbar .nav:has(a:nth-child(6)) { flex-basis: 100%; order: 1; }
+}
+
+@media (960px <= width < 1120px) {
+  .topbar__in { gap: var(--sp-2); }
+  .nav:has(a:nth-child(6)) { gap: 2px; }
+  .nav:has(a:nth-child(6)) a { min-width: 44px; padding-inline: 4px; }
 }
 
 @media (max-width: 760px) {
-  .app--desk { --topbar-h: 64px; }
+  .app--desk { --topbar-h: 65px; }
   .toasts { top: auto; bottom: calc(var(--toast-bottom, 0px) + var(--sp-4)); }
-  .topbar__in { min-height: 64px; flex-wrap: wrap; gap: 4px var(--sp-3); padding-block: 6px; }
+  .topbar__in { min-height: 64px; width: calc(100% - 40px); flex-wrap: wrap; gap: 4px var(--sp-3); padding-block: 6px; }
   .topbar .nav { display: none; }
   .tabbar--narrow { display: flex; }
   .topbar__who:has(.row) { flex-basis: 100%; }
