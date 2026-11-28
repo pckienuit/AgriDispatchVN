@@ -718,14 +718,14 @@ async function homeScreen(ctx) {
     if (others.length) nodes.push(ui.section('Đơn khác', bookingRows(others)));
   }
 
-  nodes.push(ui.section('Làm nhanh', ui.list([
+  const quickLinks = ui.section('Làm nhanh', ui.list([
     ui.listItem({ title: 'Thêm thửa ruộng', meta: 'Nhập tên thửa, địa phương và diện tích m²', icon: 'plus-circle', href: fUrl('F-03') }),
     ui.listItem({ title: 'Đặt dịch vụ gặt', meta: 'Chọn thửa, dịch vụ và khung giờ dự kiến', icon: 'tractor', href: fUrl('F-05') }),
     ui.listItem({ title: 'Khiếu nại của tôi', meta: disputes.length ? `${disputes.length} vụ việc` : 'Chưa có vụ việc', icon: 'warning', href: fUrl('F-13') }),
     ui.listItem({ title: 'Hoạt động gần đây', meta: activity.length ? `${activity.length} cập nhật mới` : 'Chưa có cập nhật', icon: 'bell', href: url('nong-dan', 'C-03') }),
-  ])));
+  ]));
 
-  return wrap(...nodes);
+  return h('div', { class: 'farmer split' }, h('div', { class: 'stack' }, nodes), quickLinks);
 }
 
 /* ---------- F-02 Danh sach thua ruong ---------- */
@@ -773,7 +773,7 @@ async function fieldsScreen(ctx) {
     h('div', { class: 'stack-sm' },
       h('h2', { class: 'small muted' }, 'Đơn vị công'),
       unitSeg),
-    h('div', { class: 'stack' }, fields.map((f) => {
+    h('div', { class: 'card-grid' }, fields.map((f) => {
       const active = bookings.find((b) => b.fieldId === f.id && b.state !== 'CANCELLED');
       return ui.card({
         title: f.name,
@@ -1258,6 +1258,7 @@ function bookingRows(items, showPrice = false) {
     icon: 'clipboard-text',
   })));
   list.classList.add('farmer-order-list');
+  if (showPrice) list.classList.add('list--grid');
   return list;
 }
 

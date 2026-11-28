@@ -179,7 +179,7 @@ async function account(ctx) {
     actions: [apiButton({ label: 'Đăng xuất', kind: 'secondary', run: () => ctx.session.logout() })],
   }));
 
-  return h('div', { class: 'stack' },
+  return h('div', { class: 'card-grid' },
     h('p', { class: 'muted' }, 'Mỗi tài khoản có thể giữ nhiều vai trò. Chọn bàn làm việc bạn muốn mở ngay bây giờ hoặc gửi yêu cầu kích hoạt thêm vai trò.'),
     ui.card({ title: 'Tài khoản', body: ui.kv([
       ['Họ và tên', user.name],

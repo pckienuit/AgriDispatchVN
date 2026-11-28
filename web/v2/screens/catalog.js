@@ -36,14 +36,16 @@ async function catalog(ctx) {
   }
   const items = Array.isArray(data?.items) ? data.items : [];
   if (!items.length) return ui.empty({ icon: 'tractor', title: 'Chưa có dịch vụ nào đang mở', text: 'Danh mục sẽ hiện ở đây khi có dịch vụ được mở.' });
+  const list = ui.list(items.map((s) => ui.listItem({
+    title: s.name,
+    meta: `${price(s)}${PRICE_LABEL[s.dataLabel] ? `. ${PRICE_LABEL[s.dataLabel]}` : ''}`,
+    icon: 'tractor',
+    href: url('chung', 'C-06', { id: s.id }),
+  })));
+  list.classList.add('list--grid');
   return h('div', { class: 'stack service-catalog' },
     h('p', { class: 'muted' }, 'Chọn một dịch vụ để xem chi tiết. Bạn cần đăng nhập khi đặt dịch vụ.'),
-    ui.list(items.map((s) => ui.listItem({
-      title: s.name,
-      meta: `${price(s)}${PRICE_LABEL[s.dataLabel] ? `. ${PRICE_LABEL[s.dataLabel]}` : ''}`,
-      icon: 'tractor',
-      href: url('chung', 'C-06', { id: s.id }),
-    }))),
+    list,
     ctx.session.isSignedIn() ? null : authButtons(null));
 }
 
